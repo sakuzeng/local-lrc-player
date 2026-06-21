@@ -107,6 +107,13 @@ final class LyricsView: NSScrollView {
         backgroundColor = .textBackgroundColor
     }
 
+    var onMouseDown: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        onMouseDown?()
+        super.mouseDown(with: event)
+    }
+
     private func scrollLyricRangeToFocus(_ range: NSRange, animated: Bool) {
         guard
             let layoutManager = textView.layoutManager,

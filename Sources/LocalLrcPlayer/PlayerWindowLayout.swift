@@ -2,7 +2,9 @@ import AppKit
 
 final class PlayerWindowLayout {
     let chooseButton = NSButton(title: "选择文件夹", target: nil, action: nil)
+    let refreshButton = NSButton(title: "刷新", target: nil, action: nil)
     let folderLabel = NSTextField(labelWithString: "未选择音乐目录")
+    let searchField = NSSearchField()
     let statusLabel = NSTextField(labelWithString: "请选择一个音乐文件夹")
     let tableView = NSTableView()
     let lyricsView = LyricsView()
@@ -24,6 +26,7 @@ final class PlayerWindowLayout {
     private func setup(in contentView: NSView) {
         [
             chooseButton,
+            refreshButton,
             setNetEaseCookieButton,
             resetNetEaseCookieButton,
             downloadCurrentLyricButton,
@@ -40,6 +43,10 @@ final class PlayerWindowLayout {
         lyricProviderPopup.selectItem(at: 0)
         lyricProviderPopup.setContentHuggingPriority(.required, for: .horizontal)
 
+        searchField.placeholderString = "搜索歌曲、歌手或专辑"
+        searchField.sendsSearchStringImmediately = true
+        searchField.sendsWholeSearchString = true
+
         folderLabel.lineBreakMode = .byTruncatingMiddle
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
@@ -47,7 +54,7 @@ final class PlayerWindowLayout {
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
 
-        let topBar = NSStackView(views: [chooseButton, folderLabel])
+        let topBar = NSStackView(views: [chooseButton, refreshButton, folderLabel])
         topBar.orientation = .horizontal
         topBar.alignment = .centerY
         topBar.spacing = 12
@@ -87,7 +94,7 @@ final class PlayerWindowLayout {
         controls.alignment = .centerY
         controls.spacing = 10
 
-        let root = NSStackView(views: [topBar, lyricTools, splitView, statusLabel, controls])
+        let root = NSStackView(views: [topBar, searchField, lyricTools, splitView, statusLabel, controls])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 12
@@ -101,6 +108,7 @@ final class PlayerWindowLayout {
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
 
             topBar.widthAnchor.constraint(equalTo: root.widthAnchor),
+            searchField.widthAnchor.constraint(equalTo: root.widthAnchor),
             lyricTools.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor),
             splitView.widthAnchor.constraint(equalTo: root.widthAnchor),
             splitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),

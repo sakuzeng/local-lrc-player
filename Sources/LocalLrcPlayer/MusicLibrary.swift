@@ -1,11 +1,40 @@
 import Foundation
 
 struct MusicTrack {
+    let id: Int64?
     let audioURL: URL
     let lyricURL: URL?
+    let title: String?
+    let artist: String?
+    let album: String?
+    let duration: TimeInterval?
+
+    init(
+        id: Int64? = nil,
+        audioURL: URL,
+        lyricURL: URL? = nil,
+        title: String? = nil,
+        artist: String? = nil,
+        album: String? = nil,
+        duration: TimeInterval? = nil
+    ) {
+        self.id = id
+        self.audioURL = audioURL
+        self.lyricURL = lyricURL
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.duration = duration
+    }
 
     var displayName: String {
-        audioURL.deletingPathExtension().lastPathComponent
+        if let title, !title.isEmpty {
+            if let artist, !artist.isEmpty {
+                return "\(artist) - \(title)"
+            }
+            return title
+        }
+        return audioURL.deletingPathExtension().lastPathComponent
     }
 }
 
@@ -21,14 +50,25 @@ enum MusicLibrary {
     ]
 
     static func scan(folderURL: URL) throws -> [MusicTrack] {
+        try scanFiles(folderURL: folderURL).map { file in
+            MusicTrack(
+                audioURL: file.url,
+                lyricURL: file.hasLyric
+                    ? file.url.deletingPathExtension().appendingPathExtension("lrc")
+                    : nil
+            )
+        }
+    }
+
+    static func scanFiles(folderURL: URL) throws -> [ScannedAudioFile] {
         let fileManager = FileManager.default
         let urls = try fileManager.contentsOfDirectory(
             at: folderURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .isHiddenKey],
+            includingPropertiesForKeys: [.isRegularFileKey, .isHiddenKey, .contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
         )
 
-        let tracks = urls.compactMap { url -> MusicTrack? in
+        let files = try urls.compactMap { url -> ScannedAudioFile? in
             guard isRegularFile(url) else {
                 return nil
             }
@@ -38,13 +78,23 @@ enum MusicLibrary {
                 return nil
             }
 
+            let values = try url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let mtime = values.contentModificationDate?.timeIntervalSince1970 ?? 0
+            let size = Int64(values.fileSize ?? 0)
             let lrcURL = url.deletingPathExtension().appendingPathExtension("lrc")
-            let lyricURL = fileManager.fileExists(atPath: lrcURL.path) ? lrcURL : nil
-            return MusicTrack(audioURL: url, lyricURL: lyricURL)
+            let hasLyric = fileManager.fileExists(atPath: lrcURL.path)
+
+            return ScannedAudioFile(
+                url: url.standardizedFileURL,
+                fileName: url.lastPathComponent,
+                mtime: mtime,
+                size: size,
+                hasLyric: hasLyric
+            )
         }
 
-        return tracks.sorted {
-            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        return files.sorted {
+            $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending
         }
     }
 

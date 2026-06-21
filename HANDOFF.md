@@ -15,16 +15,18 @@
 当前项目是一个原生 macOS 本地 LRC 播放器：
 
 - 语言和框架：Swift + AppKit + AVFoundation。
-- 构建方式：不使用 Xcode 工程、不使用 Swift Package，直接运行 `./build.sh`，通过 `swiftc` 生成 `.app`。
+- 构建方式：不使用 Xcode 工程；`./build.sh` 通过 `swiftc` 生成 `.app`；`./test.sh` 运行数据库测试并构建。
 - 构建产物：`build/LocalLrcPlayer.app`。
 - 目标平台：macOS。
 
 当前已实现功能：
 
-- 选择本地音乐文件夹，并记住上次选择的目录。
-- 扫描 `.mp3`、`.m4a`、`.flac`、`.wav`、`.aac`、`.aiff`、`.aif`。
-- 左侧显示歌曲列表，没有同名 `.lrc` 的歌曲标注“无歌词”。
-- 双击播放，支持播放/暂停、上一首、下一首、进度条 seek。
+- 选择本地音乐文件夹可**多次累积**到总播放列表；同文件内容（SHA256）自动去重。
+- SQLite schema v2：`playlists` / `playlist_tracks` / `library_tracks` / `player_state`；播放进度存 `player_state`。
+- 启动时 sync 所有已注册库；⌘R 刷新全部库。
+- 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
+- 双击播放，支持播放/暂停、上一首、下一首、进度条 seek；**空格**切换播放/暂停（搜索框输入时除外）。
+- 标准 macOS 菜单栏（⌘Q 退出、⌘O 选文件夹、⌘R 刷新等），见 `AppMenuBuilder.swift`。
 - 读取同目录同名 `.lrc`，显示同步歌词，高亮当前行并平滑滚动。
 - FLAC 播放时优先使用同名 `.m4a`；没有同名 `.m4a` 时，通过 `/opt/homebrew/bin/ffmpeg` 转成 ALAC `.m4a` 缓存后播放。
 - ALAC 缓存目录：`~/Library/Caches/LocalLrcPlayer/Transcoded`。
@@ -40,6 +42,12 @@
 - 下载歌词只写入缺失的同名 `.lrc`，不覆盖已有 `.lrc`。
 - 多语种歌词会按同一时间戳交错输出原文和译文；网易云返回英文译文时继续追加英文译文。
 - 播放时日文/英文原文和中文译文会同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
+- 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 目录。
+- 搜索框启动时不自动获得焦点；点击其他区域时失焦，避免误输入。
+- 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
+- 歌词下载/补全尝试写入 `lyric_download_log` 审计表。
+- 已初始化 Git 仓库；`.gitignore` 忽略 `build/` 与 `.DS_Store`。
+- 项目根目录 `doc/` 文档：数据库 schema、主键/外键、读写流程（见 `doc/database.md`）。
 
 最近关键修复和设计决策：
 
@@ -54,14 +62,33 @@
 - 下载当前歌词双源搜索已在 `LyricSearchService.searchAllCandidates` 和 `LyricCandidateDialog` 中实现，按网易云/QQ 音乐分组展示候选。
 - 下载当前歌词保存时会覆盖已有同名 `.lrc`；补全缺失歌词仍只写入缺失文件。
 - 补全缺失歌词时，已设置 Cookie 的网易云和 QQ 音乐会合并候选，按匹配分依次尝试直到成功返回歌词；见 `LyricSearchService.downloadBestAvailableLyric`。
+- 引入 SQLite（`AppDatabase.swift` + Repository 层）：音乐库/曲目索引、播放历史、歌词审计；歌词文件仍以磁盘 `.lrc` 为准。
+- 上次目录从 UserDefaults 迁移到 `libraries` 表；`TrackRepository.sync` 做增量扫描。
+- 启动恢复曾误用 `playTrack` 导致自动播放，已改为 `restoreLastSelection` + `restoredPlaybackPosition`，按播放时才 `playTrack(..., startFromSavedPosition: true)`。
+- `PlayerWindowController` 已拆分为 `+Library` / `+Playback` / `+LyricsDownload` 扩展；空格键通过 `installKeyboardMonitor` 全局监听（文本输入焦点时跳过）。
 
 当前主要源码文件：
 
 ```text
 Sources/LocalLrcPlayer/
-  AppDelegate.swift             应用生命周期
+  AppDatabase.swift             SQLite 连接与 schema 迁移
+  AppDatabase.swift             SQLite v1/v2 迁移
+  TrackContentHasher.swift      文件 SHA256
+  PlaylistRepository.swift      总播放列表
+  PlayerStateRepository.swift   全局播放进度
+  LibraryRepository.swift       registerLibrary / allLibraries
+  TrackRepository.swift         sync（内容去重）、masterPlaylistTracks
+  PlayHistoryRepository.swift   播放历史
+  LyricLogRepository.swift      歌词下载审计
+  TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
+  DatabaseModels.swift          数据库记录模型
+  AppDelegate.swift             应用生命周期、菜单 About/Help
+  AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
   main.swift                    App 启动入口
-  PlayerWindowController.swift  主窗口协调逻辑
+  PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
+  PlayerWindowController+Library.swift      音乐库加载与刷新
+  PlayerWindowController+Playback.swift     播放、进度、歌词显示
+  PlayerWindowController+LyricsDownload.swift  歌词下载与补全
   PlayerWindowLayout.swift      主窗口 UI 布局
   TrackListDataSource.swift     左侧歌曲列表
   PlaybackController.swift      AVPlayer 播放封装
@@ -76,11 +103,13 @@ Sources/LocalLrcPlayer/
   LyricSearchService.swift      歌词搜索、候选评分和下载协调
   LyricCandidateDialog.swift    候选歌词预览和选择窗口
   LyricFormatter.swift          原文、译文、英文译文交错输出
-  LyricFileWriter.swift         同名 .lrc 写入
+  LyricFileWriter.swift          同名 .lrc 写入
+  Result+Success.swift          Result 便捷扩展
 ```
 
 最近一次本地验证：
 
+- `./test.sh`：通过（数据库测试 + 构建）。
 - `./build.sh`：通过。
 - `plutil -lint build/LocalLrcPlayer.app/Contents/Info.plist`：通过。
 - 生成的可执行文件：`Mach-O 64-bit executable arm64`。
@@ -90,7 +119,7 @@ Sources/LocalLrcPlayer/
 将下面这段作为新工具的开场提示词：
 
 ```text
-请先阅读这个项目的 README.md、CHANGELOG.md、ROADMAP.md 和 HANDOFF.md，然后再查看 Sources/LocalLrcPlayer 下的代码。
+请先阅读这个项目的 README.md、CHANGELOG.md、ROADMAP.md、HANDOFF.md 和 doc/database.md（若涉及数据库），然后再查看 Sources/LocalLrcPlayer 下的代码。
 
 项目路径：
 /Users/sakuzeng/improve/coding/mac_app/local-lrc-player
@@ -161,6 +190,7 @@ Sources/LocalLrcPlayer/
 - 当前真实功能和使用方式写入 `README.md`。
 - 已完成的修改写入 `CHANGELOG.md`。
 - 之后要做的功能、已知但未修的 bug 写入 `ROADMAP.md`。
+- SQLite 表结构、主键/外键、读写流程写入 `doc/database.md`；索引见 `doc/README.md`。
 - 跨工具协作流程、开场提示词、交接模板写入 `HANDOFF.md`。
 - 修复 bug 后，将对应条目从 `ROADMAP.md` 的 `Known Bugs` 移到 `CHANGELOG.md` 的 `Fixed`。
 

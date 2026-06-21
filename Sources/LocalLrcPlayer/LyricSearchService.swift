@@ -17,6 +17,8 @@ enum LyricProvider: String, CaseIterable {
 final class LyricSearchService {
     private let netEaseClient = NetEaseLyricClient()
     private let qqMusicClient = QQMusicLyricClient()
+    private let lyricLogRepository = LyricLogRepository()
+    private let trackRepository = TrackRepository()
     private let minimumScore = 55
 
     func hasCookie(provider: LyricProvider) -> Bool {
@@ -172,7 +174,11 @@ final class LyricSearchService {
     }
 
     func saveFormattedLyric(_ lyric: String, for track: MusicTrack, replaceExisting: Bool = false) throws -> URL {
-        try LyricFileWriter.write(lyric, for: track, replaceExisting: replaceExisting)
+        let url = try LyricFileWriter.write(lyric, for: track, replaceExisting: replaceExisting)
+        if let trackId = track.id {
+            try trackRepository.markHasLyric(trackId: trackId, hasLyric: true)
+        }
+        return url
     }
 
     func downloadLyric(
@@ -260,17 +266,53 @@ final class LyricSearchService {
             }
 
             switch lyricResult {
-            case .failure:
+            case .failure(let error):
+                self.logAttempt(
+                    track: track,
+                    candidate: match.candidate,
+                    score: match.score,
+                    success: false,
+                    errorMessage: error.localizedDescription
+                )
                 self.tryDownloadLyric(from: candidates, for: track, index: index + 1, completion: completion)
             case .success(let lyric):
+                self.logAttempt(
+                    track: track,
+                    candidate: match.candidate,
+                    score: match.score,
+                    success: true
+                )
                 do {
                     let url = try LyricFileWriter.writeIfMissing(lyric, for: track)
+                    if let trackId = track.id {
+                        try self.trackRepository.markHasLyric(trackId: trackId, hasLyric: true)
+                    }
                     completion(.success(url))
                 } catch {
                     completion(.failure(error))
                 }
             }
         }
+    }
+
+    private func logAttempt(
+        track: MusicTrack,
+        candidate: LyricCandidate?,
+        score: Int?,
+        success: Bool,
+        errorMessage: String? = nil
+    ) {
+        guard let trackId = track.id else {
+            return
+        }
+        try? lyricLogRepository.logAttempt(
+            trackId: trackId,
+            provider: candidate?.provider ?? .netEase,
+            candidate: candidate,
+            score: score,
+            success: success,
+            errorMessage: errorMessage
+        )
     }
 
     private func readCookie(provider: LyricProvider) -> String? {
@@ -421,13 +463,19 @@ struct SearchQuery {
     }
 
     init(track: MusicTrack) {
+        if let title = track.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty {
+            artist = track.artist?.trimmingCharacters(in: .whitespacesAndNewlines)
+            self.title = title
+            return
+        }
+
         let name = track.displayName
         let parts = name.components(separatedBy: " - ")
         if parts.count >= 2 {
             artist = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
             title = parts.dropFirst().joined(separator: " - ").trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
-            artist = nil
+            artist = track.artist
             title = name.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }

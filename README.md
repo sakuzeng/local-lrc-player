@@ -4,7 +4,7 @@
 
 ## 功能
 
-- 选择本地音乐文件夹。
+- 选择本地音乐文件夹；**多次选择不同文件夹时，曲目累积到总播放列表**（同文件内容只保留一条）。
 - 扫描并显示本地音乐列表。
 - 播放、暂停、上一首、下一首。
 - 拖动进度条跳转播放位置。
@@ -18,10 +18,16 @@
 - 下载当前歌词时支持候选结果预览和手动选择。
 - 日语等多语种歌曲会尽量按同一时间戳交错输出原文和译文；网易云如果返回英文译文，也会继续追加英文译文。
 - 网易云和 QQ 音乐 Cookie 分别保存到本机私有配置文件。
+- 本地 SQLite 数据库索引音乐库与曲目（ID3 元数据、是否有歌词）。
+- 歌曲列表搜索（歌名、歌手、专辑）。
+- 刷新（⌘R）增量同步**所有已注册文件夹**并更新总播放列表。
+- 记住上次音乐库、曲目与播放进度；再次打开时恢复选中状态和进度位置，不自动播放。
+- 标准 macOS 菜单栏与常用快捷键（⌘Q 退出、空格播放/暂停等）。
+- 搜索框支持过滤歌曲；启动时不自动聚焦，点击其他区域失焦。
 
 ## 构建
 
-需要本机可用 Swift 编译工具链。FLAC 自动转 ALAC 缓存依赖 Homebrew 安装的 `ffmpeg`：
+需要本机可用 Swift 编译工具链，并链接系统 SQLite3。FLAC 自动转 ALAC 缓存依赖 Homebrew 安装的 `ffmpeg`：
 
 ```bash
 brew install ffmpeg
@@ -29,7 +35,8 @@ brew install ffmpeg
 
 ```bash
 cd /Users/sakuzeng/improve/coding/mac_app/local-lrc-player
-./build.sh
+./test.sh    # 运行数据库测试并构建 App
+./build.sh   # 仅构建
 ```
 
 构建产物：
@@ -54,7 +61,36 @@ open /Users/sakuzeng/improve/coding/mac_app/local-lrc-player/build/LocalLrcPlaye
    /Users/sakuzeng/Downloads/tgdownloads/music
    ```
 
-4. 双击左侧歌曲开始播放。
+4. 可继续选择其他文件夹，歌曲会追加到同一总列表（内容相同的副本自动去重）。
+5. 双击左侧歌曲开始播放；或选中后按**空格** / 点「播放」。
+6. 可用搜索框过滤歌曲（点击列表或歌词区可让搜索框失焦）；新增音乐或歌词后点「刷新」即可同步全部已注册文件夹。
+
+常用快捷键：
+
+| 快捷键 | 功能 |
+|---|---|
+| ⌘Q | 退出 |
+| ⌘W | 关闭窗口 |
+| ⌘O | 选择文件夹 |
+| ⌘R | 刷新全部已注册文件夹 |
+| ⌘M | 最小化 |
+| 空格 | 播放/暂停 |
+| ⌘[ / ⌘] | 上一首 / 下一首 |
+| ⌘⇧? | 帮助 |
+
+## 本地数据
+
+App 数据保存在 `~/Library/Application Support/LocalLrcPlayer/`：
+
+| 文件 | 用途 |
+|---|---|
+| `LocalLrcPlayer.sqlite` | 音乐库、总播放列表、曲目索引（含内容哈希去重）、播放历史、歌词下载审计 |
+| `netease-cookie.txt` | 网易云 Cookie |
+| `qqmusic-cookie.txt` | QQ 音乐 Cookie |
+
+歌词和音频仍以你选择的音乐文件夹内文件为准（同名 `.lrc`）；数据库只是索引与历史，不是第二份歌词。
+
+数据库表结构、主键/外键与读写流程见 [doc/database.md](./doc/database.md)。
 
 ## 下载歌词
 
@@ -144,9 +180,21 @@ Cookie 保存位置：
 
 ```text
 Sources/LocalLrcPlayer/
-  AppDelegate.swift             应用生命周期
+  AppDatabase.swift             SQLite 连接与 schema 迁移
+  LibraryRepository.swift       音乐库 CRUD、播放状态
+  TrackRepository.swift         曲目增量 sync 与查询
+  PlayHistoryRepository.swift   播放历史
+  LyricLogRepository.swift      歌词下载审计
+  TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
+  DatabaseModels.swift          数据库记录模型
+  AppDelegate.swift             应用生命周期、About/Help
+  AppMenuBuilder.swift          标准 macOS 菜单栏
   main.swift                    App 启动入口
-  PlayerWindowController.swift  主窗口协调逻辑
+  PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
+  PlayerWindowController+Library.swift      音乐库加载与刷新
+  PlayerWindowController+Playback.swift     播放、进度、歌词显示
+  PlayerWindowController+LyricsDownload.swift  歌词下载与补全
+  Result+Success.swift          Result 便捷扩展
   PlayerWindowLayout.swift      主窗口 UI 布局
   TrackListDataSource.swift     左侧歌曲列表
   PlaybackController.swift      AVPlayer 播放封装
@@ -166,10 +214,10 @@ Sources/LocalLrcPlayer/
 
 ## 开发
 
-本项目不使用 Xcode 工程、Swift Package 或第三方依赖，直接通过 `swiftc` 编译。新增 Swift 文件后不需要手动改编译列表，`build.sh` 会自动收集：
+本项目不使用 Xcode 工程、Swift Package 或第三方依赖，直接通过 `swiftc` 编译，并链接系统 `SQLite3`。新增 Swift 文件后不需要手动改编译列表，`build.sh` 会自动收集：
 
 ```text
-Sources/LocalLrcPlayer/*.swift
+Sources/LocalLrcPlayer/**/*.swift
 ```
 
 每次修改后运行：
@@ -179,6 +227,14 @@ Sources/LocalLrcPlayer/*.swift
 ```
 
 ## 常见问题
+
+### 再次打开 App 就自动播放
+
+当前版本启动时只恢复上次选中的歌曲和进度条位置，不会自动播放。需要手动点「播放」或按空格才会开始。
+
+### 搜索框一直亮着 / 无法失焦
+
+启动时默认焦点在歌曲列表，不在搜索框。点击列表、歌词区或工具栏按钮后，搜索框会失焦；只有点击搜索框本身才会进入输入状态。
 
 ### 有歌但没有歌词
 

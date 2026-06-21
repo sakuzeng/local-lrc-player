@@ -11,6 +11,10 @@ final class PlaybackController: NSObject {
         player?.timeControlStatus == .playing
     }
 
+    var hasLoadedItem: Bool {
+        player?.currentItem != nil
+    }
+
     deinit {
         removeEndObserver()
     }

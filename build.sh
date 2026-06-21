@@ -23,6 +23,7 @@ swiftc \
   -framework AppKit \
   -framework AVFoundation \
   -framework QuartzCore \
+  -lsqlite3 \
   "${SWIFT_FILES[@]}" \
   -o "$BIN_PATH"
 

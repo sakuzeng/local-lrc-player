@@ -1,0 +1,272 @@
+# SQLite 数据库说明
+
+## 概览
+
+Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁盘上的音频与 `.lrc` 文件。
+
+| 项目 | 值 |
+|---|---|
+| 引擎 | SQLite 3（系统 `-lsqlite3`） |
+| 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
+| Schema 版本 | `PRAGMA user_version = 2`（见 `AppDatabase.swift`） |
+| 外键 | 开启（`PRAGMA foreign_keys = ON`） |
+| 并发 | 单连接 + `DispatchQueue` 串行读写 |
+
+### 设计原则
+
+1. **文件为准**：`.lrc` 与音频仍在用户所选音乐文件夹内；`tracks.has_lyric` 只是缓存标记。
+2. **Cookie 不进库**：网易云 / QQ 音乐 Cookie 仍在 `netease-cookie.txt`、`qqmusic-cookie.txt`。
+3. **总播放列表**：UI 列表读系统内置 `playlists.id = 1`（「全部」），多次选文件夹累积曲目。
+4. **内容去重**：`tracks.content_hash`（SHA256）为业务唯一键；同内容不同路径只一条 `tracks` 行。
+5. **增量 sync**：`library_tracks` 以 `mtime/size` 判断是否需要重算 hash / 读 ID3。
+6. **级联删除**：删除 `tracks` 时 CASCADE 清理 history / log / playlist_tracks。
+
+---
+
+## ER 关系图（v2）
+
+```mermaid
+erDiagram
+    libraries ||--o{ library_tracks : scans
+    tracks ||--o{ library_tracks : linked
+    playlists ||--o{ playlist_tracks : contains
+    tracks ||--o{ playlist_tracks : member
+    tracks ||--o{ play_history : played
+    tracks ||--o{ lyric_download_log : audited
+    player_state }o--o| tracks : lastTrack
+
+    libraries {
+        INTEGER id PK
+        TEXT path UK
+        TEXT display_name
+        INTEGER last_track_id
+        REAL last_position
+        REAL last_scanned_at
+        INTEGER is_active
+    }
+
+    tracks {
+        INTEGER id PK
+        INTEGER library_id FK
+        TEXT file_path UK
+        TEXT content_hash UK
+        TEXT file_name
+        REAL file_mtime
+        INTEGER file_size
+        TEXT title
+        TEXT artist
+        TEXT album
+        REAL duration
+        INTEGER has_lyric
+        REAL updated_at
+    }
+
+    library_tracks {
+        INTEGER library_id PK_FK
+        TEXT file_path PK
+        INTEGER track_id FK
+        REAL file_mtime
+        INTEGER file_size
+    }
+
+    playlists {
+        INTEGER id PK
+        TEXT name
+        INTEGER is_system
+    }
+
+    playlist_tracks {
+        INTEGER playlist_id PK_FK
+        INTEGER track_id PK_FK
+        REAL added_at
+        INTEGER sort_order
+    }
+
+    player_state {
+        INTEGER id PK
+        INTEGER last_track_id
+        REAL last_position
+    }
+```
+
+---
+
+## 表结构
+
+### `libraries` — 已注册音乐文件夹
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | INTEGER | **PK**, AUTOINCREMENT | 库 ID |
+| `path` | TEXT | NOT NULL, **UNIQUE** | 标准化绝对路径 |
+| `display_name` | TEXT | | 文件夹名 |
+| `last_track_id` | INTEGER | | **v1 遗留**，v2 播放恢复改用 `player_state` |
+| `last_position` | REAL | NOT NULL, DEFAULT 0 | **v1 遗留** |
+| `last_scanned_at` | REAL | | 上次 sync 完成时间 |
+| `is_active` | INTEGER | NOT NULL, DEFAULT 0 | 1 = 最近一次选择的文件夹（仅 UI 展示） |
+
+---
+
+### `tracks` — 全局曲目索引（按内容去重）
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `id` | INTEGER | **PK**, AUTOINCREMENT | 内部 ID（`AUTOINCREMENT` 不重用已删 ID） |
+| `library_id` | INTEGER | NOT NULL, **FK** → `libraries(id)` | 首次发现该 hash 的库 |
+| `file_path` | TEXT | NOT NULL, **UNIQUE** | 当前用于播放的 canonical 路径 |
+| `content_hash` | TEXT | **UNIQUE** | 文件内容 SHA256（十六进制） |
+| `file_name` … `updated_at` | | | 同 v1 |
+
+**去重规则**：sync 时若 `content_hash` 已存在，不 INSERT 新行，只更新 `library_tracks` 并确保在总播放列表中。
+
+---
+
+### `library_tracks` — 某库扫描到的路径
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `library_id` | INTEGER | **PK**, **FK** → `libraries(id)` CASCADE | 库 |
+| `file_path` | TEXT | **PK** | 该库下的绝对路径 |
+| `track_id` | INTEGER | NOT NULL, **FK** → `tracks(id)` CASCADE | 对应全局 track |
+| `file_mtime` | REAL | NOT NULL | 缓存 mtime |
+| `file_size` | INTEGER | NOT NULL | 缓存 size |
+
+**唯一**：`(library_id, track_id)`
+
+同 hash 多路径时，每个库各一行 `library_tracks`，共用一条 `tracks`。
+
+---
+
+### `playlists` / `playlist_tracks` — 播放列表
+
+**`playlists`**
+
+| 列 | 说明 |
+|---|---|
+| `id = 1`, `name = '全部'`, `is_system = 1` | 系统总列表（当前 UI 唯一使用） |
+
+**`playlist_tracks`**
+
+| 列 | 类型 | 约束 | 说明 |
+|---|---|---|---|
+| `playlist_id` | INTEGER | **PK**, **FK** → `playlists(id)` CASCADE | 列表 |
+| `track_id` | INTEGER | **PK**, **FK** → `tracks(id)` CASCADE | 曲目 |
+| `added_at` | REAL | NOT NULL | 加入时间 |
+| `sort_order` | INTEGER | NOT NULL | 列表排序 |
+
+**索引**：`idx_playlist_tracks_order (playlist_id, sort_order)`
+
+---
+
+### `player_state` — 全局播放进度
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | INTEGER | 固定为 `1`（CHECK 约束） |
+| `last_track_id` | INTEGER | 上次选中/播放的 `tracks.id` |
+| `last_position` | REAL | 上次进度（秒） |
+
+v1→v2 迁移：从 `is_active=1` 的 `libraries` 行复制到 `player_state`。
+
+---
+
+### `play_history` / `lyric_download_log`
+
+与 v1 相同，通过 `track_id` **FK** → `tracks(id)` ON DELETE CASCADE。
+
+---
+
+## 代码与 Repository 映射
+
+```text
+AppDatabase.swift           打开 DB、v1/v2 迁移
+TrackContentHasher.swift    SHA256 流式 hash
+DatabaseModels.swift        LibraryRecord / TrackRecord
+LibraryRepository.swift     registerLibrary、allLibraries
+TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
+PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
+PlayerStateRepository.swift player_state 读写
+PlayHistoryRepository.swift play_history INSERT
+LyricLogRepository.swift    lyric_download_log INSERT
+```
+
+---
+
+## 典型读写流程
+
+### 1. 启动 App
+
+```text
+migrate → v2
+LibraryRepository.allLibraries()
+TrackRepository.syncAll(libraries)
+PlaylistRepository.masterPlaylistTracks()
+PlayerStateRepository.playbackState() → restoreLastSelection
+```
+
+### 2. 用户选择文件夹
+
+```text
+LibraryRepository.registerLibrary(url)  // 累积注册，不清空其他库
+TrackRepository.sync(libraryId, folderURL)
+  → 算 content_hash
+  → 已存在 hash：link library_tracks + playlist，跳过 INSERT
+  → 新 hash：INSERT tracks + library_tracks + playlist_tracks
+reloadMasterPlaylist()
+```
+
+### 3. 刷新（⌘R）
+
+```text
+TrackRepository.syncAll(all libraries)
+reloadMasterPlaylist()
+```
+
+### 4. 删除行为
+
+| 操作 | 结果 |
+|---|---|
+| 某库下文件删除 | 删对应 `library_tracks`；若同 hash 其他路径仍在 → **保留** `tracks` |
+| 某 hash 所有路径消失 | DELETE `tracks` → CASCADE 清理 playlist/history/log |
+| `tracks.id` 删除 | ID 不重用；`player_state.last_track_id` 无效时 UI 回退首行 |
+
+---
+
+## 测试
+
+```bash
+./test.sh
+```
+
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本。
+
+---
+
+## 手动 inspection
+
+```bash
+sqlite3 ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite "PRAGMA user_version;"
+sqlite3 ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite ".tables"
+
+# 总播放列表曲目数
+sqlite3 ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite \
+  "SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = 1;"
+
+# 按 hash 查重复（应为 0 行）
+sqlite3 ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite \
+  "SELECT content_hash, COUNT(*) c FROM tracks GROUP BY content_hash HAVING c > 1;"
+```
+
+---
+
+## 备份与迁移
+
+备份 `~/Library/Application Support/LocalLrcPlayer/` 整个目录即可。换机后音乐与 `.lrc` 需单独拷贝；路径变化后重新选文件夹 sync。
+
+---
+
+## 后续扩展（ROADMAP）
+
+- 用户自定义 `playlists`（非 system）
+- FTS5 全文搜索
+- 库管理 UI（从总列表移除某文件夹）

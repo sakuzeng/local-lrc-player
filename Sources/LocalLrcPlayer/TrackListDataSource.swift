@@ -8,6 +8,7 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
     }
 
     var onDoubleClick: ((Int) -> Void)?
+    var onSelectionChanged: (() -> Void)?
 
     private weak var tableView: NSTableView?
 
@@ -54,9 +55,20 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         }
 
         let track = tracks[row]
-        textField.stringValue = track.lyricURL == nil ? "\(track.displayName)  ·  无歌词" : track.displayName
+        textField.stringValue = displayText(for: track)
         textField.textColor = track.lyricURL == nil ? .secondaryLabelColor : .labelColor
         return textField
+    }
+
+    private func displayText(for track: MusicTrack) -> String {
+        if track.lyricURL == nil {
+            return "\(track.displayName)  ·  无歌词"
+        }
+        return track.displayName
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        onSelectionChanged?()
     }
 
     @objc private func trackDoubleClicked() {

@@ -1,24 +1,30 @@
 import AppKit
 
 final class PlayerWindowController: NSWindowController {
-    private enum DefaultsKey {
-        static let lastFolderPath = "lastFolderPath"
-    }
+    var layout: PlayerWindowLayout!
+    let trackListDataSource = TrackListDataSource()
+    let playbackController = PlaybackController()
+    let lyricSearchService = LyricSearchService()
+    let libraryRepository = LibraryRepository()
+    let trackRepository = TrackRepository()
+    let playHistoryRepository = PlayHistoryRepository()
+    let playerStateRepository = PlayerStateRepository()
+    var lyricCandidateDialog: LyricCandidateDialog?
 
-    private var layout: PlayerWindowLayout!
-    private let trackListDataSource = TrackListDataSource()
-    private let playbackController = PlaybackController()
-    private let lyricSearchService = LyricSearchService()
-    private var lyricCandidateDialog: LyricCandidateDialog?
+    var tracks: [MusicTrack] = []
+    var activeLibrary: LibraryRecord?
+    var currentTrackIndex: Int?
+    var lrcLines: [LrcLine] = []
+    var progressTimer: Timer?
+    var isSeekingWithSlider = false
+    var wasPlayingBeforeSliderTracking = false
+    var seekGeneration = 0
+    var searchKeyword = ""
+    var restoredPlaybackPosition: TimeInterval?
+    var lastSavedPlaybackTick = 0
 
-    private var tracks: [MusicTrack] = []
-    private var currentFolderURL: URL?
-    private var currentTrackIndex: Int?
-    private var lrcLines: [LrcLine] = []
-    private var progressTimer: Timer?
-    private var isSeekingWithSlider = false
-    private var wasPlayingBeforeSliderTracking = false
-    private var seekGeneration = 0
+    private var mouseDownMonitor: Any?
+    private var keyDownMonitor: Any?
 
     private var selectedLyricProvider: LyricProvider {
         let index = layout.lyricProviderPopup.indexOfSelectedItem
@@ -43,6 +49,12 @@ final class PlayerWindowController: NSWindowController {
 
     deinit {
         progressTimer?.invalidate()
+        if let mouseDownMonitor {
+            NSEvent.removeMonitor(mouseDownMonitor)
+        }
+        if let keyDownMonitor {
+            NSEvent.removeMonitor(keyDownMonitor)
+        }
     }
 
     private func setup() {
@@ -56,12 +68,95 @@ final class PlayerWindowController: NSWindowController {
         layout.lyricsView.showPlaceholder("请选择歌曲")
         updateControlState()
         startTimer()
-        loadLastFolderIfAvailable()
+
+        do {
+            try libraryRepository.migrateLegacyLastFolderIfNeeded()
+            bootstrapLibraries(restoreLastSession: true)
+        } catch {
+            layout.statusLabel.stringValue = "数据库初始化失败：\(error.localizedDescription)"
+        }
+
+        window?.initialFirstResponder = layout.tableView
+        DispatchQueue.main.async { [weak self] in
+            self?.resignSearchFieldFocus()
+        }
+    }
+
+    func resignSearchFieldFocus() {
+        guard let window else {
+            return
+        }
+        if let editor = layout.searchField.currentEditor(), window.firstResponder === editor {
+            layout.searchField.abortEditing()
+        }
+        if window.firstResponder === layout.searchField {
+            window.makeFirstResponder(nil)
+        }
+    }
+
+    private func installSearchFieldFocusMonitor() {
+        mouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, let window = self.window, event.window === window else {
+                return event
+            }
+
+            let pointInSearchField = layout.searchField.convert(event.locationInWindow, from: nil)
+            if !layout.searchField.bounds.contains(pointInSearchField) {
+                resignSearchFieldFocus()
+            }
+            return event
+        }
+    }
+
+    private func installKeyboardMonitor() {
+        keyDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, let window = self.window, event.window === window else {
+                return event
+            }
+
+            if isTextInputFocused() {
+                return event
+            }
+
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            if event.charactersIgnoringModifiers == " " && modifiers.isEmpty {
+                togglePlayback()
+                return nil
+            }
+
+            return event
+        }
+    }
+
+    private func isTextInputFocused() -> Bool {
+        guard let window, let responder = window.firstResponder else {
+            return false
+        }
+
+        if let editor = layout.searchField.currentEditor(), responder === editor {
+            return true
+        }
+        if responder === layout.searchField {
+            return true
+        }
+
+        if let textView = responder as? NSTextView, textView.isEditable {
+            return true
+        }
+        if let textField = responder as? NSTextField, textField.isEditable {
+            return true
+        }
+
+        return false
     }
 
     private func bindActions() {
         layout.chooseButton.target = self
         layout.chooseButton.action = #selector(chooseFolder)
+        layout.refreshButton.target = self
+        layout.refreshButton.action = #selector(refreshFolder)
+        layout.searchField.target = self
+        layout.searchField.action = #selector(searchFieldChanged)
         layout.lyricProviderPopup.target = self
         layout.lyricProviderPopup.action = #selector(lyricProviderChanged)
         layout.setNetEaseCookieButton.target = self
@@ -89,9 +184,20 @@ final class PlayerWindowController: NSWindowController {
         }
 
         trackListDataSource.configure(tableView: layout.tableView)
+        trackListDataSource.onSelectionChanged = { [weak self] in
+            self?.resignSearchFieldFocus()
+        }
         trackListDataSource.onDoubleClick = { [weak self] row in
+            self?.resignSearchFieldFocus()
             self?.playTrack(at: row)
         }
+
+        layout.lyricsView.onMouseDown = { [weak self] in
+            self?.resignSearchFieldFocus()
+        }
+
+        installSearchFieldFocusMonitor()
+        installKeyboardMonitor()
 
         playbackController.onPlaybackEnded = { [weak self] in
             self?.playerItemDidEnd()
@@ -104,7 +210,7 @@ final class PlayerWindowController: NSWindowController {
         layout.statusLabel.stringValue = "Cookie 来源：\(provider.displayName)"
     }
 
-    @objc private func chooseFolder() {
+    @objc func chooseFolder() {
         let panel = NSOpenPanel()
         panel.title = "选择音乐文件夹"
         panel.canChooseFiles = false
@@ -113,267 +219,35 @@ final class PlayerWindowController: NSWindowController {
         panel.canCreateDirectories = false
 
         if panel.runModal() == .OK, let url = panel.url {
-            UserDefaults.standard.set(url.path, forKey: DefaultsKey.lastFolderPath)
-            loadFolder(url)
-        }
-    }
-
-    private func loadLastFolderIfAvailable() {
-        guard let path = UserDefaults.standard.string(forKey: DefaultsKey.lastFolderPath) else {
-            return
-        }
-
-        let url = URL(fileURLWithPath: path)
-        var isDirectory: ObjCBool = false
-        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
-            loadFolder(url)
-        }
-    }
-
-    private func loadFolder(_ url: URL) {
-        do {
-            currentFolderURL = url
-            tracks = try MusicLibrary.scan(folderURL: url)
-            trackListDataSource.tracks = tracks
-            currentTrackIndex = nil
-            playbackController.stop()
-            lrcLines = []
-            layout.folderLabel.stringValue = url.path
-
-            if tracks.isEmpty {
-                layout.statusLabel.stringValue = "该目录没有找到支持的音乐文件"
-                layout.lyricsView.showPlaceholder("未找到音乐文件")
-            } else {
-                layout.statusLabel.stringValue = "找到 \(tracks.count) 首歌曲。双击歌曲开始播放。"
-                trackListDataSource.selectRow(0)
-                layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
-            }
-
-            updateControlState()
-        } catch {
-            tracks = []
-            trackListDataSource.tracks = []
-            layout.statusLabel.stringValue = "读取目录失败：\(error.localizedDescription)"
-            layout.lyricsView.showPlaceholder("读取目录失败")
-            updateControlState()
-        }
-    }
-
-    private func playTrack(at index: Int) {
-        guard tracks.indices.contains(index) else {
-            return
-        }
-
-        let track = tracks[index]
-        currentTrackIndex = index
-        trackListDataSource.selectRow(index)
-        let playbackURL: URL
-        do {
-            layout.statusLabel.stringValue = track.audioURL.pathExtension.lowercased() == "flac"
-                ? "正在准备 FLAC 播放缓存：\(track.displayName)"
-                : "正在播放：\(track.displayName)"
-            playbackURL = try PlaybackAssetResolver.playbackURL(for: track)
-        } catch {
-            layout.statusLabel.stringValue = error.localizedDescription
-            return
-        }
-
-        playbackController.play(url: playbackURL)
-        loadLyrics(for: track)
-        layout.statusLabel.stringValue = "正在播放：\(track.displayName)"
-        layout.playButton.title = "暂停"
-        updateControlState()
-    }
-
-    private func loadLyrics(for track: MusicTrack) {
-        guard let lyricURL = track.lyricURL else {
-            lrcLines = []
-            layout.lyricsView.showPlaceholder("未找到同名 LRC 歌词")
-            return
-        }
-
-        do {
-            let contents = try String(contentsOf: lyricURL, encoding: .utf8)
-            renderLyrics(contents)
-        } catch {
             do {
-                let contents = try String(contentsOf: lyricURL, encoding: .utf16)
-                renderLyrics(contents)
+                let library = try libraryRepository.registerLibrary(at: url)
+                registerAndSyncLibrary(library, restoreLastSession: false)
             } catch {
-                lrcLines = []
-                layout.lyricsView.showPlaceholder("歌词读取失败")
+                layout.statusLabel.stringValue = "加载目录失败：\(error.localizedDescription)"
             }
         }
     }
 
-    private func renderLyrics(_ contents: String) {
-        lrcLines = LrcParser.parse(contents)
-        if lrcLines.isEmpty {
-            layout.lyricsView.showPlaceholder("歌词文件为空或格式无法识别")
-        } else {
-            layout.lyricsView.render(lrcLines)
-        }
+    @objc func refreshFolder() {
+        let preserveURL = currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil }
+        refreshAllLibraries(preserveTrackURL: preserveURL)
     }
 
-    @objc private func togglePlayback() {
-        if currentTrackIndex == nil {
-            if let selected = trackListDataSource.selectedTrackIndex() {
-                playTrack(at: selected)
-            } else if !tracks.isEmpty {
-                playTrack(at: 0)
-            }
-            return
-        }
-
-        if playbackController.isPlaying {
-            playbackController.pause()
-            layout.playButton.title = "播放"
-            layout.statusLabel.stringValue = "已暂停"
-        } else {
-            playbackController.resume()
-            layout.playButton.title = "暂停"
-            if let index = currentTrackIndex {
-                layout.statusLabel.stringValue = "正在播放：\(tracks[index].displayName)"
-            }
-        }
+    @objc private func searchFieldChanged() {
+        searchKeyword = layout.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil })
     }
 
-    @objc private func playPrevious() {
-        guard !tracks.isEmpty else {
-            return
-        }
-
-        let nextIndex = max((currentTrackIndex ?? trackListDataSource.selectedTrackIndex() ?? 0) - 1, 0)
-        playTrack(at: nextIndex)
-    }
-
-    @objc private func playNext() {
-        guard !tracks.isEmpty else {
-            return
-        }
-
-        let baseIndex = currentTrackIndex ?? trackListDataSource.selectedTrackIndex() ?? -1
-        let nextIndex = min(baseIndex + 1, tracks.count - 1)
-        playTrack(at: nextIndex)
-    }
-
-    private func playerItemDidEnd() {
-        guard let currentTrackIndex else {
-            return
-        }
-
-        let nextIndex = currentTrackIndex + 1
-        if tracks.indices.contains(nextIndex) {
-            playTrack(at: nextIndex)
-        } else {
-            playbackController.resetToStart()
-            layout.playButton.title = "播放"
-            layout.statusLabel.stringValue = "播放结束"
-        }
-    }
-
-    @objc private func progressChanged() {
-        guard let duration = playbackController.duration(), duration > 0 else {
-            return
-        }
-
-        let targetTime = duration * layout.progressSlider.doubleValue
-        updateTimeLabel(current: targetTime, duration: duration)
-        layout.lyricsView.update(for: targetTime, forceScroll: true)
-
-        if !layout.progressSlider.isTrackingMouse {
-            commitProgressSeek(resumeAfterSeek: false)
-        }
-    }
-
-    private func beginProgressTracking() {
-        isSeekingWithSlider = true
-        wasPlayingBeforeSliderTracking = playbackController.isPlaying
-        if wasPlayingBeforeSliderTracking {
-            playbackController.pause()
-        }
-    }
-
-    private func commitProgressSeek(resumeAfterSeek: Bool) {
-        guard let duration = playbackController.duration(), duration > 0 else {
-            isSeekingWithSlider = false
-            wasPlayingBeforeSliderTracking = false
-            return
-        }
-
-        isSeekingWithSlider = true
-        seekGeneration += 1
-        let generation = seekGeneration
-        let targetTime = duration * layout.progressSlider.doubleValue
-        updateTimeLabel(current: targetTime, duration: duration)
-        layout.lyricsView.update(for: targetTime, forceScroll: true)
-
-        playbackController.seek(to: targetTime) { [weak self] _ in
-            guard let self else {
-                return
-            }
-            guard generation == self.seekGeneration else {
-                return
-            }
-
-            let actualTime = self.playbackController.currentTime() ?? targetTime
-            let actualDuration = self.playbackController.duration() ?? duration
-            if actualDuration > 0 {
-                self.layout.progressSlider.doubleValue = min(max(actualTime / actualDuration, 0), 1)
-            }
-            self.updateTimeLabel(current: actualTime, duration: actualDuration)
-            self.layout.lyricsView.update(for: actualTime, forceScroll: true)
-            self.isSeekingWithSlider = false
-            self.wasPlayingBeforeSliderTracking = false
-            if resumeAfterSeek {
-                self.playbackController.resume()
-                if let index = self.currentTrackIndex {
-                    self.layout.statusLabel.stringValue = "正在播放：\(self.tracks[index].displayName)"
-                    self.layout.playButton.title = "暂停"
-                }
-            }
-        }
-    }
-
-    private func startTimer() {
-        progressTimer?.invalidate()
-        progressTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            self?.tick()
-        }
-    }
-
-    private func tick() {
-        guard !isSeekingWithSlider else {
-            return
-        }
-
-        let current = playbackController.currentTime() ?? 0
-        let duration = playbackController.duration() ?? 0
-
-        if duration.isFinite, duration > 0, current.isFinite {
-            layout.progressSlider.doubleValue = min(max(current / duration, 0), 1)
-            updateTimeLabel(current: current, duration: duration)
-            layout.lyricsView.update(for: current, forceScroll: false)
-        } else {
-            updateTimeLabel(current: 0, duration: 0)
-        }
-    }
-
-    private func updateTimeLabel(current: TimeInterval, duration: TimeInterval) {
-        layout.timeLabel.stringValue = "\(formatTime(current)) / \(formatTime(duration))"
-    }
-
-    private func formatTime(_ time: TimeInterval) -> String {
-        guard time.isFinite, time >= 0 else {
-            return "00:00"
-        }
-
-        let totalSeconds = Int(time.rounded(.down))
-        return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
-    }
-
-    private func updateControlState() {
+    func updateControlState() {
         let hasTracks = !tracks.isEmpty
+        let hasLibrary: Bool
+        if let libraries = try? libraryRepository.allLibraries() {
+            hasLibrary = !libraries.isEmpty
+        } else {
+            hasLibrary = activeLibrary != nil
+        }
+        layout.refreshButton.isEnabled = hasLibrary
+        layout.searchField.isEnabled = hasLibrary
         layout.playButton.isEnabled = hasTracks
         layout.previousButton.isEnabled = hasTracks
         layout.nextButton.isEnabled = hasTracks
@@ -422,139 +296,6 @@ final class PlayerWindowController: NSWindowController {
         }
     }
 
-    @objc private func downloadCurrentLyric() {
-        guard let index = currentTrackIndex ?? trackListDataSource.selectedTrackIndex(), tracks.indices.contains(index) else {
-            layout.statusLabel.stringValue = "请先选择一首歌曲"
-            return
-        }
-
-        downloadLyric(for: tracks[index], reloadCurrentTrack: true)
-    }
-
-    @objc private func fillMissingLyrics() {
-        let missingTracks = tracks.filter { $0.lyricURL == nil }
-        guard !missingTracks.isEmpty else {
-            layout.statusLabel.stringValue = "当前目录没有缺失歌词的歌曲"
-            return
-        }
-
-        layout.statusLabel.stringValue = "开始补全缺失歌词：\(missingTracks.count) 首"
-        setLyricButtonsEnabled(false)
-        downloadMissingLyrics(missingTracks, index: 0, successCount: 0, failureCount: 0)
-    }
-
-    private func downloadMissingLyrics(_ missingTracks: [MusicTrack], index: Int, successCount: Int, failureCount: Int) {
-        guard index < missingTracks.count else {
-            setLyricButtonsEnabled(true)
-            refreshCurrentFolder(preserveTrackURL: currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil })
-            layout.statusLabel.stringValue = "补全完成：成功 \(successCount)，失败 \(failureCount)"
-            return
-        }
-
-        let track = missingTracks[index]
-        layout.statusLabel.stringValue = "正在下载歌词 \(index + 1)/\(missingTracks.count)：\(track.displayName)"
-        lyricSearchService.downloadBestAvailableLyric(for: track) { [weak self] result in
-            guard let self else {
-                return
-            }
-
-            let nextSuccess = successCount + (result.isSuccess ? 1 : 0)
-            let nextFailure = failureCount + (result.isSuccess ? 0 : 1)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                self.downloadMissingLyrics(
-                    missingTracks,
-                    index: index + 1,
-                    successCount: nextSuccess,
-                    failureCount: nextFailure
-                )
-            }
-        }
-    }
-
-    private func downloadLyric(for track: MusicTrack, reloadCurrentTrack: Bool) {
-        setLyricButtonsEnabled(false)
-        layout.statusLabel.stringValue = "正在搜索歌词：\(track.displayName)"
-
-        lyricSearchService.searchAllCandidates(for: track) { [weak self] result in
-            guard let self else {
-                return
-            }
-
-            switch result {
-            case .failure(let error):
-                self.setLyricButtonsEnabled(true)
-                self.layout.statusLabel.stringValue = "歌词下载失败：\(error.localizedDescription)"
-            case .success(let sections):
-                guard !sections.isEmpty else {
-                    self.setLyricButtonsEnabled(true)
-                    self.layout.statusLabel.stringValue = "歌词下载失败：未找到候选结果"
-                    return
-                }
-
-                let sourceNames = sections.map(\.provider.displayName).joined(separator: "、")
-                self.layout.statusLabel.stringValue = "请选择歌词候选（\(sourceNames)）：\(track.displayName)"
-                let dialog = LyricCandidateDialog(
-                    service: self.lyricSearchService,
-                    track: track,
-                    sections: sections,
-                    replaceExisting: true
-                ) { [weak self] saveResult in
-                    guard let self else {
-                        return
-                    }
-
-                    self.lyricCandidateDialog = nil
-                    self.setLyricButtonsEnabled(true)
-                    switch saveResult {
-                    case .failure(let error):
-                        if !(error is LyricCandidateDialogError) {
-                            self.layout.statusLabel.stringValue = "歌词保存失败：\(error.localizedDescription)"
-                        } else {
-                            self.layout.statusLabel.stringValue = "已取消歌词下载"
-                        }
-                    case .success:
-                        self.refreshCurrentFolder(preserveTrackURL: track.audioURL)
-                        self.layout.statusLabel.stringValue = "歌词已保存：\(track.displayName)"
-                        if reloadCurrentTrack,
-                           let index = self.tracks.firstIndex(where: { $0.audioURL == track.audioURL }) {
-                            self.loadLyrics(for: self.tracks[index])
-                        }
-                    }
-                }
-
-                self.lyricCandidateDialog = dialog
-                dialog.showModal()
-            }
-        }
-    }
-
-    private func refreshCurrentFolder(preserveTrackURL: URL?) {
-        guard let currentFolderURL else {
-            return
-        }
-
-        do {
-            tracks = try MusicLibrary.scan(folderURL: currentFolderURL)
-            trackListDataSource.tracks = tracks
-            if let preserveTrackURL,
-               let index = tracks.firstIndex(where: { $0.audioURL == preserveTrackURL }) {
-                trackListDataSource.selectRow(index)
-                if currentTrackIndex != nil {
-                    currentTrackIndex = index
-                }
-            }
-        } catch {
-            layout.statusLabel.stringValue = "刷新目录失败：\(error.localizedDescription)"
-        }
-    }
-
-    private func setLyricButtonsEnabled(_ isEnabled: Bool) {
-        layout.setNetEaseCookieButton.isEnabled = isEnabled
-        layout.resetNetEaseCookieButton.isEnabled = isEnabled
-        layout.downloadCurrentLyricButton.isEnabled = isEnabled && !tracks.isEmpty
-        layout.fillMissingLyricsButton.isEnabled = isEnabled && !tracks.isEmpty
-    }
-
     private func updateCookieButtonTitle(for provider: LyricProvider) {
         layout.setNetEaseCookieButton.title = "设置\(provider.displayName) Cookie"
     }
@@ -567,13 +308,28 @@ final class PlayerWindowController: NSWindowController {
             return "uin=...; p_uin=...; p_skey=...; qqmusic_key=..."
         }
     }
-}
 
-private extension Result {
-    var isSuccess: Bool {
-        if case .success = self {
-            return true
-        }
-        return false
+    func saveSession() {
+        saveCurrentPlaybackState()
+    }
+
+    @objc func chooseFolderFromMenu() {
+        chooseFolder()
+    }
+
+    @objc func refreshFolderFromMenu() {
+        refreshFolder()
+    }
+
+    @objc func togglePlaybackFromMenu() {
+        togglePlayback()
+    }
+
+    @objc func playPreviousFromMenu() {
+        playPrevious()
+    }
+
+    @objc func playNextFromMenu() {
+        playNext()
     }
 }
