@@ -42,7 +42,8 @@
 - 下载歌词只写入缺失的同名 `.lrc`，不覆盖已有 `.lrc`。
 - 多语种歌词会按同一时间戳交错输出原文和译文；网易云返回英文译文时继续追加英文译文。
 - 播放时日文/英文原文和中文译文会同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
-- 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 目录。
+- 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 全部已注册文件夹。
+- 正在播放曲目在列表中以加粗、主题色、浅蓝行背景标识（`TrackListDataSource` / `playingTrackURL`）；搜索取消后仍定位到总列表对应行。
 - 搜索框启动时不自动获得焦点；点击其他区域时失焦，避免误输入。
 - 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
 - 歌词下载/补全尝试写入 `lyric_download_log` 审计表。
@@ -66,6 +67,7 @@
 - 上次目录从 UserDefaults 迁移到 `libraries` 表；`TrackRepository.sync` 做增量扫描。
 - 启动恢复曾误用 `playTrack` 导致自动播放，已改为 `restoreLastSelection` + `restoredPlaybackPosition`，按播放时才 `playTrack(..., startFromSavedPosition: true)`。
 - `PlayerWindowController` 已拆分为 `+Library` / `+Playback` / `+LyricsDownload` 扩展；空格键通过 `installKeyboardMonitor` 全局监听（文本输入焦点时跳过）。
+- 列表正在播放标识：`playingTrackURL` + `TrackListDataSource.playingTrackURL`；`PlayingTrackRowView` 绘制行背景；`updatePlayingTrackInList` 在搜索清空/重载列表时按标准化路径匹配并 `scrollToPlayingTrack`。
 
 当前主要源码文件：
 
@@ -90,7 +92,7 @@ Sources/LocalLrcPlayer/
   PlayerWindowController+Playback.swift     播放、进度、歌词显示
   PlayerWindowController+LyricsDownload.swift  歌词下载与补全
   PlayerWindowLayout.swift      主窗口 UI 布局
-  TrackListDataSource.swift     左侧歌曲列表
+  TrackListDataSource.swift     左侧歌曲列表、正在播放行样式
   PlaybackController.swift      AVPlayer 播放封装
   PlaybackAssetResolver.swift   FLAC 播放资源解析和 ALAC 缓存生成
   LyricsView.swift              歌词显示、高亮、滚动

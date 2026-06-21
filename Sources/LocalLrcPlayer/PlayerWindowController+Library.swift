@@ -74,29 +74,58 @@ extension PlayerWindowController {
             let keyword = searchKeyword.isEmpty ? nil : searchKeyword
             let records = try trackRepository.masterPlaylistTracks(keyword: keyword)
             tracks = records.map { $0.asMusicTrack() }
-            trackListDataSource.tracks = tracks
+            updatePlayingTrackInList(preferredURL: preserveTrackURL, scrollToVisible: true)
 
-            if let preserveTrackURL,
-               let index = tracks.firstIndex(where: { $0.audioURL == preserveTrackURL }) {
-                trackListDataSource.selectRow(index)
-                if currentTrackIndex != nil {
-                    currentTrackIndex = index
-                }
-            } else if restoreLastSession {
+            if restoreLastSession, playingTrackURL == nil {
                 let state = try playerStateRepository.playbackState()
                 if let lastTrackId = state.lastTrackId,
                    let index = tracks.firstIndex(where: { $0.id == lastTrackId }) {
                     restoreLastSelection(at: index, position: state.lastPosition)
-                } else if !tracks.isEmpty {
-                    trackListDataSource.selectRow(0)
-                    layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
+                    return
                 }
-            } else if preserveTrackURL == nil, !tracks.isEmpty, currentTrackIndex == nil {
+            }
+
+            if playingTrackURL == nil, preserveTrackURL == nil, !tracks.isEmpty, currentTrackIndex == nil {
                 trackListDataSource.selectRow(0)
                 layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
             }
         } catch {
             layout.statusLabel.stringValue = "读取歌曲列表失败：\(error.localizedDescription)"
+        }
+    }
+
+    func updatePlayingTrackInList(preferredURL: URL?, scrollToVisible: Bool) {
+        if let preferredURL,
+           let index = tracks.firstIndex(where: { TrackListDataSource.matchesTrackURL($0.audioURL, preferredURL) }) {
+            playingTrackURL = tracks[index].audioURL
+            currentTrackIndex = index
+        } else if let playingTrackURL,
+                  let index = tracks.firstIndex(where: { TrackListDataSource.matchesTrackURL($0.audioURL, playingTrackURL) }) {
+            currentTrackIndex = index
+        }
+
+        trackListDataSource.playingTrackURL = playingTrackURL
+        trackListDataSource.tracks = tracks
+
+        if scrollToVisible, playingTrackURL != nil {
+            trackListDataSource.scrollToPlayingTrack()
+        }
+    }
+
+    @discardableResult
+    func highlightTrackInList(audioURL: URL?) -> Bool {
+        guard let audioURL else {
+            return false
+        }
+        updatePlayingTrackInList(preferredURL: audioURL, scrollToVisible: true)
+        return playingTrackURL != nil
+    }
+
+    func syncPlayingTrackVisuals(scrollToVisible: Bool = false) {
+        trackListDataSource.playingTrackURL = playingTrackURL
+        layout.tableView.reloadData()
+        if scrollToVisible {
+            trackListDataSource.scrollToPlayingTrack()
         }
     }
 

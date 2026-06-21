@@ -8,8 +8,11 @@ extension PlayerWindowController {
 
         playbackController.stop()
         let track = tracks[index]
+        playingTrackURL = track.audioURL
         currentTrackIndex = index
-        trackListDataSource.selectRow(index)
+        trackListDataSource.playingTrackURL = playingTrackURL
+        trackListDataSource.scrollToPlayingTrack()
+        layout.tableView.reloadData()
         loadLyrics(for: track)
 
         restoredPlaybackPosition = max(position, 0)
@@ -41,8 +44,11 @@ extension PlayerWindowController {
         }
 
         let track = tracks[index]
+        playingTrackURL = track.audioURL
         currentTrackIndex = index
-        trackListDataSource.selectRow(index)
+        trackListDataSource.playingTrackURL = playingTrackURL
+        trackListDataSource.scrollToPlayingTrack()
+        layout.tableView.reloadData()
         let playbackURL: URL
         do {
             layout.statusLabel.stringValue = track.audioURL.pathExtension.lowercased() == "flac"

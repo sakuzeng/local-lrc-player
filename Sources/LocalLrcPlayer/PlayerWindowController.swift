@@ -20,6 +20,7 @@ final class PlayerWindowController: NSWindowController {
     var wasPlayingBeforeSliderTracking = false
     var seekGeneration = 0
     var searchKeyword = ""
+    var playingTrackURL: URL?
     var restoredPlaybackPosition: TimeInterval?
     var lastSavedPlaybackTick = 0
 
@@ -104,6 +105,9 @@ final class PlayerWindowController: NSWindowController {
             if !layout.searchField.bounds.contains(pointInSearchField) {
                 resignSearchFieldFocus()
             }
+            DispatchQueue.main.async { [weak self] in
+                self?.syncPlayingTrackVisuals()
+            }
             return event
         }
     }
@@ -157,6 +161,7 @@ final class PlayerWindowController: NSWindowController {
         layout.refreshButton.action = #selector(refreshFolder)
         layout.searchField.target = self
         layout.searchField.action = #selector(searchFieldChanged)
+        layout.searchField.delegate = self
         layout.lyricProviderPopup.target = self
         layout.lyricProviderPopup.action = #selector(lyricProviderChanged)
         layout.setNetEaseCookieButton.target = self
@@ -194,6 +199,7 @@ final class PlayerWindowController: NSWindowController {
 
         layout.lyricsView.onMouseDown = { [weak self] in
             self?.resignSearchFieldFocus()
+            self?.syncPlayingTrackVisuals()
         }
 
         installSearchFieldFocusMonitor()
@@ -229,13 +235,28 @@ final class PlayerWindowController: NSWindowController {
     }
 
     @objc func refreshFolder() {
-        let preserveURL = currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil }
-        refreshAllLibraries(preserveTrackURL: preserveURL)
+        refreshAllLibraries(preserveTrackURL: trackURLForListHighlight())
     }
 
     @objc private func searchFieldChanged() {
         searchKeyword = layout.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil })
+        reloadMasterPlaylist(
+            restoreLastSession: false,
+            preserveTrackURL: trackURLForListHighlight()
+        )
+    }
+
+    func trackURLForListHighlight() -> URL? {
+        if let playingTrackURL {
+            return playingTrackURL
+        }
+        if let index = currentTrackIndex, tracks.indices.contains(index) {
+            return tracks[index].audioURL
+        }
+        if let row = trackListDataSource.selectedTrackIndex(), tracks.indices.contains(row) {
+            return tracks[row].audioURL
+        }
+        return nil
     }
 
     func updateControlState() {
@@ -331,5 +352,16 @@ final class PlayerWindowController: NSWindowController {
 
     @objc func playNextFromMenu() {
         playNext()
+    }
+}
+
+extension PlayerWindowController: NSSearchFieldDelegate {
+    func searchFieldDidEndSearching(_ sender: NSSearchField) {
+        guard sender === layout.searchField else {
+            return
+        }
+        sender.stringValue = ""
+        searchKeyword = ""
+        reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: playingTrackURL)
     }
 }

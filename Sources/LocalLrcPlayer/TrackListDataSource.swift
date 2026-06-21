@@ -7,10 +7,20 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         }
     }
 
+    var playingTrackURL: URL? {
+        didSet {
+            tableView?.reloadData()
+        }
+    }
+
     var onDoubleClick: ((Int) -> Void)?
     var onSelectionChanged: (() -> Void)?
 
     private weak var tableView: NSTableView?
+
+    static func matchesTrackURL(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
+    }
 
     func configure(tableView: NSTableView) {
         self.tableView = tableView
@@ -20,11 +30,37 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         tableView.doubleAction = #selector(trackDoubleClicked)
     }
 
-    func selectRow(_ row: Int) {
-        guard tracks.indices.contains(row) else {
+    func indexOfPlayingTrack() -> Int? {
+        guard let playingTrackURL else {
+            return nil
+        }
+        return tracks.firstIndex { Self.matchesTrackURL($0.audioURL, playingTrackURL) }
+    }
+
+    func selectRow(_ row: Int, scrollToVisible: Bool = true) {
+        guard tracks.indices.contains(row), let tableView else {
             return
         }
-        tableView?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        if scrollToVisible {
+            scrollRowToVisible(row)
+        }
+    }
+
+    func scrollToPlayingTrack() {
+        guard let index = indexOfPlayingTrack() else {
+            return
+        }
+        scrollRowToVisible(index)
+    }
+
+    func scrollRowToVisible(_ row: Int) {
+        guard tracks.indices.contains(row), let tableView else {
+            return
+        }
+        DispatchQueue.main.async {
+            tableView.scrollRowToVisible(row)
+        }
     }
 
     func selectedTrackIndex() -> Int? {
@@ -51,13 +87,36 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
             textField = NSTextField(labelWithString: "")
             textField.identifier = identifier
             textField.lineBreakMode = .byTruncatingMiddle
-            textField.font = .systemFont(ofSize: 14)
         }
 
         let track = tracks[row]
+        let isPlaying = isPlayingTrack(track)
         textField.stringValue = displayText(for: track)
-        textField.textColor = track.lyricURL == nil ? .secondaryLabelColor : .labelColor
+        textField.font = isPlaying
+            ? .boldSystemFont(ofSize: 14)
+            : .systemFont(ofSize: 14)
+        if isPlaying {
+            textField.textColor = .controlAccentColor
+        } else {
+            textField.textColor = track.lyricURL == nil ? .secondaryLabelColor : .labelColor
+        }
         return textField
+    }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+        let identifier = NSUserInterfaceItemIdentifier("TrackRow")
+        let rowView = tableView.makeView(withIdentifier: identifier, owner: self) as? PlayingTrackRowView
+            ?? PlayingTrackRowView()
+        rowView.identifier = identifier
+        rowView.isPlayingRow = tracks.indices.contains(row) && isPlayingTrack(tracks[row])
+        return rowView
+    }
+
+    private func isPlayingTrack(_ track: MusicTrack) -> Bool {
+        guard let playingTrackURL else {
+            return false
+        }
+        return Self.matchesTrackURL(track.audioURL, playingTrackURL)
     }
 
     private func displayText(for track: MusicTrack) -> String {
@@ -76,5 +135,22 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
             return
         }
         onDoubleClick?(row)
+    }
+}
+
+private final class PlayingTrackRowView: NSTableRowView {
+    var isPlayingRow = false {
+        didSet {
+            needsDisplay = true
+        }
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        if isPlayingRow {
+            NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
+            dirtyRect.fill()
+            return
+        }
+        super.drawBackground(in: dirtyRect)
     }
 }
