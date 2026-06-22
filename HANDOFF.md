@@ -43,7 +43,8 @@
 - 多语种歌词会按同一时间戳交错输出原文和译文；网易云返回英文译文时继续追加英文译文。
 - 播放时日文/英文原文和中文译文会同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
 - 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 全部已注册文件夹。
-- 正在播放曲目在列表中以加粗、主题色、浅蓝行背景标识（`TrackListDataSource` / `playingTrackURL`）；搜索取消后仍定位到总列表对应行。
+- 正在播放曲目在列表中以自定义行样式标识（`playingTrackURL` / `TrackRowView`）：浅灰=仅选中、主题色浅底=播放中、竖条=播放且选中；搜索取消后仍定位到总列表对应行。
+- 双击播放、单击选中；空格在选中其他歌曲时切歌，选中正在播放的同一首时暂停/继续。
 - 搜索框启动时不自动获得焦点；点击其他区域时失焦，避免误输入。
 - 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
 - 歌词下载/补全尝试写入 `lyric_download_log` 审计表。
@@ -66,8 +67,8 @@
 - 引入 SQLite（`AppDatabase.swift` + Repository 层）：音乐库/曲目索引、播放历史、歌词审计；歌词文件仍以磁盘 `.lrc` 为准。
 - 上次目录从 UserDefaults 迁移到 `libraries` 表；`TrackRepository.sync` 做增量扫描。
 - 启动恢复曾误用 `playTrack` 导致自动播放，已改为 `restoreLastSelection` + `restoredPlaybackPosition`，按播放时才 `playTrack(..., startFromSavedPosition: true)`。
-- `PlayerWindowController` 已拆分为 `+Library` / `+Playback` / `+LyricsDownload` 扩展；空格键通过 `installKeyboardMonitor` 全局监听（文本输入焦点时跳过）。
-- 列表正在播放标识：`playingTrackURL` + `TrackListDataSource.playingTrackURL`；`PlayingTrackRowView` 绘制行背景；`updatePlayingTrackInList` 在搜索清空/重载列表时按标准化路径匹配并 `scrollToPlayingTrack`。
+- `PlayerWindowController` 已拆分为 `_Library` / `_Playback` / `_LyricsDownload` 扩展文件；空格键通过 `installKeyboardMonitor` 全局监听（文本输入焦点时跳过）。
+- 列表行样式：`TrackRowView` 自定义绘制（`selectionHighlightStyle = .none`）；`playingTrackURL` + `selectedTrackURL`；`updatePlayingTrackInList` 在搜索清空/重载时按路径匹配并滚动。
 
 当前主要源码文件：
 
@@ -88,9 +89,9 @@ Sources/LocalLrcPlayer/
   AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
   main.swift                    App 启动入口
   PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
-  PlayerWindowController+Library.swift      音乐库加载与刷新
-  PlayerWindowController+Playback.swift     播放、进度、歌词显示
-  PlayerWindowController+LyricsDownload.swift  歌词下载与补全
+  PlayerWindowController_Library.swift      音乐库加载与刷新
+  PlayerWindowController_Playback.swift     播放、进度、歌词显示
+  PlayerWindowController_LyricsDownload.swift  歌词下载与补全
   PlayerWindowLayout.swift      主窗口 UI 布局
   TrackListDataSource.swift     左侧歌曲列表、正在播放行样式
   PlaybackController.swift      AVPlayer 播放封装

@@ -124,7 +124,7 @@ final class PlayerWindowLayout {
         tableView.addTableColumn(tableColumn)
         tableView.headerView = nil
         tableView.rowHeight = 34
-        tableView.usesAlternatingRowBackgroundColors = true
+        tableView.usesAlternatingRowBackgroundColors = false
         tableView.allowsEmptySelection = true
     }
 }

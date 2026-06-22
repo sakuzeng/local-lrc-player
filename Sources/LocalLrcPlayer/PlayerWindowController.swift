@@ -105,9 +105,6 @@ final class PlayerWindowController: NSWindowController {
             if !layout.searchField.bounds.contains(pointInSearchField) {
                 resignSearchFieldFocus()
             }
-            DispatchQueue.main.async { [weak self] in
-                self?.syncPlayingTrackVisuals()
-            }
             return event
         }
     }
@@ -189,7 +186,7 @@ final class PlayerWindowController: NSWindowController {
         }
 
         trackListDataSource.configure(tableView: layout.tableView)
-        trackListDataSource.onSelectionChanged = { [weak self] in
+        trackListDataSource.onSelectionChanged = { [weak self] _ in
             self?.resignSearchFieldFocus()
         }
         trackListDataSource.onDoubleClick = { [weak self] row in
@@ -199,7 +196,6 @@ final class PlayerWindowController: NSWindowController {
 
         layout.lyricsView.onMouseDown = { [weak self] in
             self?.resignSearchFieldFocus()
-            self?.syncPlayingTrackVisuals()
         }
 
         installSearchFieldFocusMonitor()
@@ -252,6 +248,9 @@ final class PlayerWindowController: NSWindowController {
         }
         if let index = currentTrackIndex, tracks.indices.contains(index) {
             return tracks[index].audioURL
+        }
+        if let url = trackListDataSource.selectedTrackURL {
+            return url
         }
         if let row = trackListDataSource.selectedTrackIndex(), tracks.indices.contains(row) {
             return tracks[row].audioURL

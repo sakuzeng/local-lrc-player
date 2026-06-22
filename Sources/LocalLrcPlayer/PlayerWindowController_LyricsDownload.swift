@@ -2,7 +2,7 @@ import AppKit
 
 extension PlayerWindowController {
     @objc func downloadCurrentLyric() {
-        guard let index = currentTrackIndex ?? trackListDataSource.selectedTrackIndex(), tracks.indices.contains(index) else {
+        guard let index = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack(), tracks.indices.contains(index) else {
             layout.statusLabel.stringValue = "请先选择一首歌曲"
             return
         }

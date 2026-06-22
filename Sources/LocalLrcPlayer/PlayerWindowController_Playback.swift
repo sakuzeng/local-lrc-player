@@ -127,8 +127,16 @@ extension PlayerWindowController {
     }
 
     @objc func togglePlayback() {
-        if currentTrackIndex == nil {
-            if let selected = trackListDataSource.selectedTrackIndex() {
+        let selected = trackListDataSource.indexOfSelectedTrack()
+        let playing = trackListDataSource.indexOfPlayingTrack()
+
+        if let selected, selected != playing {
+            playTrack(at: selected)
+            return
+        }
+
+        guard let playing, tracks.indices.contains(playing) else {
+            if let selected {
                 playTrack(at: selected)
             } else if !tracks.isEmpty {
                 playTrack(at: 0)
@@ -144,11 +152,9 @@ extension PlayerWindowController {
         } else if playbackController.hasLoadedItem {
             playbackController.resume()
             layout.playButton.title = "暂停"
-            if let index = currentTrackIndex {
-                layout.statusLabel.stringValue = "正在播放：\(tracks[index].displayName)"
-            }
-        } else if let index = currentTrackIndex {
-            playTrack(at: index, startFromSavedPosition: true)
+            layout.statusLabel.stringValue = "正在播放：\(tracks[playing].displayName)"
+        } else {
+            playTrack(at: playing, startFromSavedPosition: true)
         }
     }
 
@@ -157,7 +163,7 @@ extension PlayerWindowController {
             return
         }
 
-        let nextIndex = max((currentTrackIndex ?? trackListDataSource.selectedTrackIndex() ?? 0) - 1, 0)
+        let nextIndex = max((currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0) - 1, 0)
         playTrack(at: nextIndex)
     }
 
@@ -166,7 +172,7 @@ extension PlayerWindowController {
             return
         }
 
-        let baseIndex = currentTrackIndex ?? trackListDataSource.selectedTrackIndex() ?? -1
+        let baseIndex = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? -1
         let nextIndex = min(baseIndex + 1, tracks.count - 1)
         playTrack(at: nextIndex)
     }

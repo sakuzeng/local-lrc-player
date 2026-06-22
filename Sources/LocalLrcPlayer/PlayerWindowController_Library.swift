@@ -123,7 +123,7 @@ extension PlayerWindowController {
 
     func syncPlayingTrackVisuals(scrollToVisible: Bool = false) {
         trackListDataSource.playingTrackURL = playingTrackURL
-        layout.tableView.reloadData()
+        trackListDataSource.refreshRowAppearance()
         if scrollToVisible {
             trackListDataSource.scrollToPlayingTrack()
         }

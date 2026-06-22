@@ -46,9 +46,9 @@
 
 - 将 `PlayerWindowController` 拆分为多个扩展文件，主文件只保留窗口绑定与 UI 入口：
   - `PlayerWindowController.swift` — 初始化、快捷键、Cookie、控件绑定
-  - `PlayerWindowController+Library.swift` — 音乐库加载、刷新、列表查询
-  - `PlayerWindowController+Playback.swift` — 播放、进度、歌词显示、会话恢复
-  - `PlayerWindowController+LyricsDownload.swift` — 下载当前歌词、补全缺失歌词
+  - `PlayerWindowController_Library.swift` — 音乐库加载、刷新、列表查询
+  - `PlayerWindowController_Playback.swift` — 播放、进度、歌词显示、会话恢复
+  - `PlayerWindowController_LyricsDownload.swift` — 下载当前歌词、补全缺失歌词
 - 歌曲列表仅展示歌名（有 ID3 时为「歌手 - 歌名」）及「无歌词」标记，不再显示时长；时长仍显示在底部播放进度条。
 - 音乐库扫描改为增量同步：以文件 `mtime/size` 判断变更，写入 SQLite；歌词仍以同目录 `.lrc` 文件为准。
 - 上次音乐目录从 `UserDefaults` 迁移到数据库 `libraries` 表。
@@ -69,7 +69,9 @@
 - 移除歌词来源 Cookie 对 Keychain 的依赖，改为本机私有配置文件，避免下载歌词时反复弹出钥匙串密码框。
 - 将歌词候选结构抽象为通用 provider/candidate，复用候选预览和保存流程。
 - QQ 音乐搜索和歌词详情请求改为直接使用已保存 Cookie，并从 Cookie 解析 `uin` 和 `g_tk` 请求参数。
-- 歌曲列表正在播放标识：加粗/主题色/浅蓝行背景（不依赖表格选中）；去掉行首 ▶ 符号。
+- 歌曲列表交互：保持**双击播放**；**单击**选中；空格/播放按钮在选中行与正在播放行不同时切歌，相同时暂停/继续。
+- 列表行自定义样式（关闭系统蓝色选中块）：仅选中=浅灰底+中等字重；正在播放=主题色浅底+加粗；选中且正在播放=更深主题色浅底+左侧竖条。
+- `PlayerWindowController` 扩展文件命名由 `+` 改为 `_`（`PlayerWindowController_Library.swift` 等）。
 
 ### Fixed
 
@@ -86,7 +88,8 @@
 - 修复 QQ 音乐下载歌词总是提示“未找到候选结果”的问题：旧 `client_search_cp` 搜索接口对关键词返回空列表，改用 `musicu.fcg` 的 `DoSearchForQQMusicDesktop` 搜索接口。
 - 改进歌词候选匹配分：歌名从 API 混杂字段提取后再比对；歌手仅依据 API `artists` 且与本地歌手完全一致才加分。
 - 修复搜索后播放再清空搜索时，总列表中丢失当前歌曲标识的问题：以 `playingTrackURL` 定位曲目，清空搜索（含搜索框 **×**）后滚动到可见行。
-- 正在播放曲目改用独立列表样式（加粗、主题色、浅蓝行背景），不再依赖 `NSTableView` 选中态，点击歌词区/按钮后仍可见。
+- 正在播放曲目改用独立列表样式（`playingTrackURL`），不依赖 `NSTableView` 选中态；点击歌词区后播放标识仍保留。
+- 修复单击列表无选中反馈：`NSTableCellView` 避免文字抢点击；移除每次点击触发的整表 `reloadData`；用 `selectedTrackURL` 辅助空格切歌。
 
 ### Verified
 

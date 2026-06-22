@@ -63,8 +63,17 @@ open /Users/sakuzeng/improve/coding/mac_app/local-lrc-player/build/LocalLrcPlaye
    ```
 
 4. 可继续选择其他文件夹，歌曲会追加到同一总列表（内容相同的副本自动去重）。
-5. 双击左侧歌曲开始播放；或选中后按**空格** / 点「播放」。
-6. 可用搜索框过滤歌曲（点击列表或歌词区可让搜索框失焦）；新增音乐或歌词后点「刷新」即可同步全部已注册文件夹。
+5. **双击**左侧歌曲开始播放。
+6. **单击**选中某行；若选中的是另一首，按**空格**或点「播放」会切换到该曲；若选中的是正在播放的同一首，则**暂停/继续**。
+7. 可用搜索框过滤歌曲（点击列表或歌词区可让搜索框失焦）；新增音乐或歌词后点「刷新」即可同步全部已注册文件夹。
+
+列表行样式：
+
+| 状态 | 外观 |
+|---|---|
+| 仅选中（未播放） | **浅灰底** + 中等字重 |
+| 正在播放（未选中） | **主题色浅底** + 加粗主题色歌名 |
+| 选中且正在播放 | **更深主题色浅底** + **左侧竖条** + 加粗主题色歌名 |
 
 常用快捷键：
 
@@ -75,7 +84,7 @@ open /Users/sakuzeng/improve/coding/mac_app/local-lrc-player/build/LocalLrcPlaye
 | ⌘O | 选择文件夹 |
 | ⌘R | 刷新全部已注册文件夹 |
 | ⌘M | 最小化 |
-| 空格 | 播放/暂停 |
+| 空格 | 选中其他歌曲时播放选中项；选中正在播放的同一首时暂停/继续 |
 | ⌘[ / ⌘] | 上一首 / 下一首 |
 | ⌘⇧? | 帮助 |
 
@@ -192,9 +201,9 @@ Sources/LocalLrcPlayer/
   AppMenuBuilder.swift          标准 macOS 菜单栏
   main.swift                    App 启动入口
   PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
-  PlayerWindowController+Library.swift      音乐库加载与刷新
-  PlayerWindowController+Playback.swift     播放、进度、歌词显示
-  PlayerWindowController+LyricsDownload.swift  歌词下载与补全
+  PlayerWindowController_Library.swift      音乐库加载与刷新
+  PlayerWindowController_Playback.swift     播放、进度、歌词显示
+  PlayerWindowController_LyricsDownload.swift  歌词下载与补全
   Result+Success.swift          Result 便捷扩展
   PlayerWindowLayout.swift      主窗口 UI 布局
   TrackListDataSource.swift     左侧歌曲列表
