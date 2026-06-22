@@ -32,6 +32,7 @@ extension PlayerWindowController {
 
         layout.playButton.title = "播放"
         layout.statusLabel.stringValue = "已恢复上次选中的歌曲：\(track.displayName)"
+        syncMenuBarLyrics(at: restoredPlaybackPosition ?? 0)
     }
 
     func playTrack(
@@ -97,9 +98,12 @@ extension PlayerWindowController {
     }
 
     func loadLyrics(for track: MusicTrack) {
+        menuBarLyricsController?.setTrackTitle(track.displayName)
+
         guard let lyricURL = track.lyricURL else {
             lrcLines = []
             layout.lyricsView.showPlaceholder("未找到同名 LRC 歌词")
+            syncMenuBarLyrics()
             return
         }
 
@@ -113,6 +117,7 @@ extension PlayerWindowController {
             } catch {
                 lrcLines = []
                 layout.lyricsView.showPlaceholder("歌词读取失败")
+                syncMenuBarLyrics()
             }
         }
     }
@@ -124,6 +129,32 @@ extension PlayerWindowController {
         } else {
             layout.lyricsView.render(lrcLines)
         }
+        syncMenuBarLyrics()
+    }
+
+    func syncMenuBarLyrics(at time: TimeInterval? = nil) {
+        guard let menuBarLyricsController else {
+            return
+        }
+
+        let currentTime = time ?? playbackController.currentTime() ?? 0
+        let isPlaying = playbackController.isPlaying
+
+        if lrcLines.isEmpty {
+            if let index = currentTrackIndex, tracks.indices.contains(index) {
+                let track = tracks[index]
+                if track.lyricURL == nil {
+                    menuBarLyricsController.showPlaceholder("♪ \(track.displayName)")
+                } else {
+                    menuBarLyricsController.showPlaceholder("暂无歌词")
+                }
+            } else {
+                menuBarLyricsController.showPlaceholder("请选择歌曲")
+            }
+            return
+        }
+
+        menuBarLyricsController.update(lines: lrcLines, time: currentTime, isPlaying: isPlaying)
     }
 
     @objc func togglePlayback() {
@@ -149,6 +180,7 @@ extension PlayerWindowController {
             layout.playButton.title = "播放"
             layout.statusLabel.stringValue = "已暂停"
             saveCurrentPlaybackState()
+            syncMenuBarLyrics()
         } else if playbackController.hasLoadedItem {
             playbackController.resume()
             layout.playButton.title = "暂停"
@@ -190,6 +222,7 @@ extension PlayerWindowController {
             layout.playButton.title = "播放"
             layout.statusLabel.stringValue = "播放结束"
             saveCurrentPlaybackState(position: 0)
+            syncMenuBarLyrics(at: 0)
         }
     }
 
@@ -201,6 +234,7 @@ extension PlayerWindowController {
         let targetTime = duration * layout.progressSlider.doubleValue
         updateTimeLabel(current: targetTime, duration: duration)
         layout.lyricsView.update(for: targetTime, forceScroll: true)
+        syncMenuBarLyrics(at: targetTime)
 
         if !layout.progressSlider.isTrackingMouse {
             commitProgressSeek(resumeAfterSeek: false)
@@ -228,6 +262,7 @@ extension PlayerWindowController {
         let targetTime = duration * layout.progressSlider.doubleValue
         updateTimeLabel(current: targetTime, duration: duration)
         layout.lyricsView.update(for: targetTime, forceScroll: true)
+        syncMenuBarLyrics(at: targetTime)
 
         playbackController.seek(to: targetTime) { [weak self] _ in
             guard let self else {
@@ -259,6 +294,7 @@ extension PlayerWindowController {
         }
         updateTimeLabel(current: current, duration: duration)
         layout.lyricsView.update(for: current, forceScroll: true)
+        syncMenuBarLyrics(at: current)
     }
 
     func startTimer() {
@@ -280,6 +316,7 @@ extension PlayerWindowController {
             layout.progressSlider.doubleValue = min(max(current / duration, 0), 1)
             updateTimeLabel(current: current, duration: duration)
             layout.lyricsView.update(for: current, forceScroll: false)
+            syncMenuBarLyrics(at: current)
 
             if playbackController.isPlaying {
                 lastSavedPlaybackTick += 1

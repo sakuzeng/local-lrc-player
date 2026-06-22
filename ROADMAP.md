@@ -8,8 +8,6 @@
 
 ## High Priority
 
-- （暂无）
-
 ## Medium Priority
 - 文件夹是不是应该有删除的功能
 - 播放模式：

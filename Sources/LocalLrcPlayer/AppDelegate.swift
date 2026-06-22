@@ -4,6 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static weak var shared: AppDelegate?
 
     private var playerWindowController: PlayerWindowController?
+    private var menuBarLyricsController: MenuBarLyricsController?
 
     override init() {
         super.init()
@@ -13,7 +14,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         let controller = PlayerWindowController()
         playerWindowController = controller
-        AppMenuBuilder.installMainMenu(playerWindowController: controller)
+        let menuBarLyrics = MenuBarLyricsController(playerWindowController: controller)
+        menuBarLyricsController = menuBarLyrics
+        controller.menuBarLyricsController = menuBarLyrics
+        AppMenuBuilder.installMainMenu(
+            playerWindowController: controller,
+            menuBarLyricsController: menuBarLyrics
+        )
+        menuBarLyrics.reloadSettingsFromDatabase()
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -27,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -51,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ⌘[  上一首
         ⌘]  下一首
 
+        关闭主窗口后应用仍在后台运行；可在菜单栏歌词处继续控制播放。
         歌词与音乐文件保存在所选文件夹内；数据库仅作索引与历史记录。
         """
         alert.alertStyle = .informational

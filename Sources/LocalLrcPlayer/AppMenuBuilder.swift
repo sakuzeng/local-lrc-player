@@ -1,13 +1,17 @@
 import AppKit
 
 enum AppMenuBuilder {
-    static func installMainMenu(playerWindowController: PlayerWindowController) {
+    static func installMainMenu(
+        playerWindowController: PlayerWindowController,
+        menuBarLyricsController: MenuBarLyricsController
+    ) {
         let mainMenu = NSMenu()
 
         mainMenu.addItem(appMenuItem())
         mainMenu.addItem(fileMenuItem(playerWindowController: playerWindowController))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(playbackMenuItem(playerWindowController: playerWindowController))
+        mainMenu.addItem(viewMenuItem(menuBarLyricsController: menuBarLyricsController))
         mainMenu.addItem(windowMenuItem())
         mainMenu.addItem(helpMenuItem())
 
@@ -108,6 +112,21 @@ enum AppMenuBuilder {
         let item = NSMenuItem()
         item.title = "播放"
         item.submenu = playbackMenu
+        return item
+    }
+
+    private static func viewMenuItem(menuBarLyricsController: MenuBarLyricsController) -> NSMenuItem {
+        let viewMenu = NSMenu(title: "视图")
+        viewMenu.delegate = menuBarLyricsController
+        MenuBarLyricsSettingsMenu.appendSettings(to: viewMenu, controller: menuBarLyricsController, leadingSeparator: false)
+        MenuBarLyricsSettingsMenu.refreshCheckmarks(
+            in: viewMenu,
+            settings: menuBarLyricsController.currentSettingsSnapshot()
+        )
+
+        let item = NSMenuItem()
+        item.title = "视图"
+        item.submenu = viewMenu
         return item
     }
 

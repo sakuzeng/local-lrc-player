@@ -22,7 +22,9 @@
 当前已实现功能：
 
 - 选择本地音乐文件夹可**多次累积**到总播放列表；同文件内容（SHA256）自动去重。
-- SQLite schema v2：`playlists` / `playlist_tracks` / `library_tracks` / `player_state`；播放进度存 `player_state`。
+- SQLite schema v1：完整表结构一次性初始化（含 `app_settings`、播放列表、内容去重等）；播放进度存 `player_state`。
+- **菜单栏歌词**：`NSStatusItem` 显示当前行；短句静止、长句跑马灯；宽度读 `app_settings` 全局设置；关窗不退出，后台继续更新。
+- 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
 - 双击播放，支持播放/暂停、上一首、下一首、进度条 seek；**空格**切换播放/暂停（搜索框输入时除外）。
@@ -44,7 +46,7 @@
 - 播放时日文/英文原文和中文译文会同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
 - 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 全部已注册文件夹。
 - 正在播放曲目在列表中以自定义行样式标识（`playingTrackURL` / `TrackRowView`）：浅灰=仅选中、主题色浅底=播放中、竖条=播放且选中；搜索取消后仍定位到总列表对应行。
-- 双击播放、单击选中；空格在选中其他歌曲时切歌，选中正在播放的同一首时暂停/继续。
+- 关闭主窗口后应用不退出（`applicationShouldTerminateAfterLastWindowClosed = false`），菜单栏歌词继续更新；⌘Q 或 Dock 可完全退出。
 - 搜索框启动时不自动获得焦点；点击其他区域时失焦，避免误输入。
 - 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
 - 歌词下载/补全尝试写入 `lyric_download_log` 审计表。
@@ -81,7 +83,10 @@ Sources/LocalLrcPlayer/
   PlayerStateRepository.swift   全局播放进度
   LibraryRepository.swift       registerLibrary / allLibraries
   TrackRepository.swift         sync（内容去重）、masterPlaylistTracks
-  PlayHistoryRepository.swift   播放历史
+  PlayerStateRepository.swift   全局播放进度
+  AppSettingsRepository.swift   菜单栏歌词等 UI 设置（app_settings）
+  MenuBarLyricsController.swift 系统菜单栏歌词与快捷菜单
+  MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
   LyricLogRepository.swift      歌词下载审计
   TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
   DatabaseModels.swift          数据库记录模型

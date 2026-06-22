@@ -162,9 +162,80 @@ final class MasterPlaylistRepositoryTests {
     }
 }
 
+final class AppSettingsRepositoryTests {
+    private var database: AppDatabase!
+    private var repository: AppSettingsRepository!
+    private var tempRoot: URL!
+
+    func runAll() throws {
+        try runIsolated { try self.testDefaultSettingsAfterV3Migration() }
+        try runIsolated { try self.testUpdateMenuBarLyricsPersists() }
+    }
+
+    private func runIsolated(_ work: () throws -> Void) throws {
+        try setUp()
+        defer { tearDown() }
+        try work()
+    }
+
+    private func setUp() throws {
+        tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalLrcPlayerTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+        let dbURL = tempRoot.appendingPathComponent("test.sqlite")
+        database = try AppDatabase(fileURL: dbURL)
+        repository = AppSettingsRepository(database: database)
+    }
+
+    private func tearDown() {
+        if let tempRoot {
+            try? FileManager.default.removeItem(at: tempRoot)
+        }
+        database = nil
+        repository = nil
+        tempRoot = nil
+    }
+
+    private func testDefaultSettingsAfterV3Migration() throws {
+        let settings = try repository.settings()
+        try assertEqual(settings.menuBarLyricsEnabled, true)
+        try assertEqual(settings.menuBarLyricsMaxWidth, 160)
+        try assertEqual(settings.menuBarLyricsShowIcon, true)
+    }
+
+    private func testUpdateMenuBarLyricsPersists() throws {
+        try repository.updateMenuBarLyrics(enabled: false, maxWidth: 200, showIcon: false)
+        let settings = try repository.settings()
+        try assertEqual(settings.menuBarLyricsEnabled, false)
+        try assertEqual(settings.menuBarLyricsMaxWidth, 200)
+        try assertEqual(settings.menuBarLyricsShowIcon, false)
+    }
+}
+
+struct MenuBarLyricsMaxWidthTests {
+    func runAll() throws {
+        try testClamp()
+        try testPresetDetection()
+    }
+
+    private func testClamp() throws {
+        try assertEqual(MenuBarLyricsMaxWidth.clamp(50), 80)
+        try assertEqual(MenuBarLyricsMaxWidth.clamp(180), 180)
+        try assertEqual(MenuBarLyricsMaxWidth.clamp(999), 400)
+    }
+
+    private func testPresetDetection() throws {
+        try assertTrue(MenuBarLyricsMaxWidth.isPreset(160), "160 is preset")
+        try assertTrue(!MenuBarLyricsMaxWidth.isPreset(200), "200 is custom")
+    }
+}
+
 do {
     try TrackContentHasherTests().runAll()
     try MasterPlaylistRepositoryTests().runAll()
+    try AppSettingsRepositoryTests().runAll()
+    try MenuBarLyricsMaxWidthTests().runAll()
     print("All tests passed.")
 } catch {
     fputs("TEST FAILED: \(error)\n", stderr)

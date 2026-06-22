@@ -21,6 +21,8 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
+    static let currentSchemaVersion = 1
+
     static let shared: AppDatabase = {
         do {
             return try AppDatabase()
@@ -102,190 +104,13 @@ final class AppDatabase {
         try write { db in
             try exec(db, sql: "PRAGMA foreign_keys = ON;")
 
-            var schemaVersion = try currentSchemaVersion(db)
-            if schemaVersion < 1 {
-                try exec(db, sql: Self.schemaV1)
-                try exec(db, sql: "PRAGMA user_version = 1;")
-                schemaVersion = 1
-            }
-            if schemaVersion < 2 {
-                try migrateToV2(db)
-                try exec(db, sql: "PRAGMA user_version = 2;")
-            }
-        }
-    }
-
-    private func migrateToV2(_ db: OpaquePointer) throws {
-        try exec(db, sql: Self.schemaV2DDL)
-
-        var tracks: [(id: Int64, libraryId: Int64, filePath: String, fileName: String, mtime: TimeInterval, size: Int64, updatedAt: TimeInterval)] = []
-        let selectSQL = """
-        SELECT id, library_id, file_path, file_name, file_mtime, file_size, updated_at
-        FROM tracks ORDER BY id ASC;
-        """
-        let select = try prepare(db, sql: selectSQL)
-        defer { sqlite3_finalize(select) }
-        while sqlite3_step(select) == SQLITE_ROW {
-            tracks.append((
-                id: sqlite3_column_int64(select, 0),
-                libraryId: sqlite3_column_int64(select, 1),
-                filePath: String(cString: sqlite3_column_text(select, 2)),
-                fileName: String(cString: sqlite3_column_text(select, 3)),
-                mtime: sqlite3_column_double(select, 4),
-                size: sqlite3_column_int64(select, 5),
-                updatedAt: sqlite3_column_double(select, 6)
-            ))
-        }
-
-        var hashToCanonicalTrackId: [String: Int64] = [:]
-        var sortOrder = 1
-
-        for track in tracks {
-            let fileURL = URL(fileURLWithPath: track.filePath)
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                try deleteTrack(db: db, trackId: track.id)
-                continue
+            let schemaVersion = try currentSchemaVersion(db)
+            guard schemaVersion < Self.currentSchemaVersion else {
+                return
             }
 
-            let hash = try TrackContentHasher.hash(fileURL: fileURL)
-            if let canonicalId = hashToCanonicalTrackId[hash] {
-                try insertLibraryTrack(
-                    db: db,
-                    libraryId: track.libraryId,
-                    trackId: canonicalId,
-                    filePath: track.filePath,
-                    mtime: track.mtime,
-                    size: track.size
-                )
-                try ensureMasterPlaylistMembership(db: db, trackId: canonicalId, addedAt: track.updatedAt, sortOrder: &sortOrder)
-                if track.id != canonicalId {
-                    try deleteTrack(db: db, trackId: track.id)
-                }
-                continue
-            }
-
-            try bindTrackHash(db: db, trackId: track.id, hash: hash)
-            try insertLibraryTrack(
-                db: db,
-                libraryId: track.libraryId,
-                trackId: track.id,
-                filePath: track.filePath,
-                mtime: track.mtime,
-                size: track.size
-            )
-            try ensureMasterPlaylistMembership(db: db, trackId: track.id, addedAt: track.updatedAt, sortOrder: &sortOrder)
-            hashToCanonicalTrackId[hash] = track.id
-        }
-
-        let playerStateSQL = """
-        SELECT last_track_id, last_position
-        FROM libraries
-        WHERE is_active = 1
-        ORDER BY id DESC
-        LIMIT 1;
-        """
-        let playerSelect = try prepare(db, sql: playerStateSQL)
-        defer { sqlite3_finalize(playerSelect) }
-        if sqlite3_step(playerSelect) == SQLITE_ROW {
-            let lastTrackId = sqlite3_column_type(playerSelect, 0) == SQLITE_NULL
-                ? nil as Int64?
-                : sqlite3_column_int64(playerSelect, 0)
-            let lastPosition = sqlite3_column_double(playerSelect, 1)
-            let updateSQL = """
-            UPDATE player_state
-            SET last_track_id = ?, last_position = ?
-            WHERE id = 1;
-            """
-            let update = try prepare(db, sql: updateSQL)
-            defer { sqlite3_finalize(update) }
-            if let lastTrackId {
-                sqlite3_bind_int64(update, 1, lastTrackId)
-            } else {
-                sqlite3_bind_null(update, 1)
-            }
-            sqlite3_bind_double(update, 2, lastPosition)
-            guard sqlite3_step(update) == SQLITE_DONE else {
-                throw AppDatabaseError.stepFailed(errorMessage(db))
-            }
-        }
-    }
-
-    private func bindTrackHash(db: OpaquePointer, trackId: Int64, hash: String) throws {
-        let sql = "UPDATE tracks SET content_hash = ? WHERE id = ?;"
-        let statement = try prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, hash, -1, Self.sqliteTransient)
-        sqlite3_bind_int64(statement, 2, trackId)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(errorMessage(db))
-        }
-    }
-
-    private func insertLibraryTrack(
-        db: OpaquePointer,
-        libraryId: Int64,
-        trackId: Int64,
-        filePath: String,
-        mtime: TimeInterval,
-        size: Int64
-    ) throws {
-        let sql = """
-        INSERT OR REPLACE INTO library_tracks (library_id, track_id, file_path, file_mtime, file_size)
-        VALUES (?, ?, ?, ?, ?);
-        """
-        let statement = try prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_int64(statement, 2, trackId)
-        sqlite3_bind_text(statement, 3, filePath, -1, Self.sqliteTransient)
-        sqlite3_bind_double(statement, 4, mtime)
-        sqlite3_bind_int64(statement, 5, size)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(errorMessage(db))
-        }
-    }
-
-    private func ensureMasterPlaylistMembership(
-        db: OpaquePointer,
-        trackId: Int64,
-        addedAt: TimeInterval,
-        sortOrder: inout Int
-    ) throws {
-        let checkSQL = """
-        SELECT 1 FROM playlist_tracks
-        WHERE playlist_id = ? AND track_id = ? LIMIT 1;
-        """
-        let check = try prepare(db, sql: checkSQL)
-        defer { sqlite3_finalize(check) }
-        sqlite3_bind_int64(check, 1, MasterPlaylist.id)
-        sqlite3_bind_int64(check, 2, trackId)
-        if sqlite3_step(check) == SQLITE_ROW {
-            return
-        }
-
-        let insertSQL = """
-        INSERT INTO playlist_tracks (playlist_id, track_id, added_at, sort_order)
-        VALUES (?, ?, ?, ?);
-        """
-        let insert = try prepare(db, sql: insertSQL)
-        defer { sqlite3_finalize(insert) }
-        sqlite3_bind_int64(insert, 1, MasterPlaylist.id)
-        sqlite3_bind_int64(insert, 2, trackId)
-        sqlite3_bind_double(insert, 3, addedAt)
-        sqlite3_bind_int64(insert, 4, Int64(sortOrder))
-        sortOrder += 1
-        guard sqlite3_step(insert) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(errorMessage(db))
-        }
-    }
-
-    private func deleteTrack(db: OpaquePointer, trackId: Int64) throws {
-        let sql = "DELETE FROM tracks WHERE id = ?;"
-        let statement = try prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, trackId)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(errorMessage(db))
+            try exec(db, sql: Self.schemaV1)
+            try exec(db, sql: "PRAGMA user_version = \(Self.currentSchemaVersion);")
         }
     }
 
@@ -331,6 +156,7 @@ final class AppDatabase {
 
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
+    /// 当前完整 schema（本地开发基线 v1）。后续结构变更请新增 v2 迁移。
     private static let schemaV1 = """
     CREATE TABLE IF NOT EXISTS libraries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,11 +180,60 @@ final class AppDatabase {
         album TEXT,
         duration REAL,
         has_lyric INTEGER NOT NULL DEFAULT 0,
+        content_hash TEXT,
         updated_at REAL NOT NULL
     );
 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_content_hash ON tracks(content_hash);
     CREATE INDEX IF NOT EXISTS idx_tracks_library ON tracks(library_id);
     CREATE INDEX IF NOT EXISTS idx_tracks_has_lyric ON tracks(library_id, has_lyric);
+
+    CREATE TABLE IF NOT EXISTS library_tracks (
+        library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        file_path TEXT NOT NULL,
+        file_mtime REAL NOT NULL,
+        file_size INTEGER NOT NULL,
+        PRIMARY KEY (library_id, file_path),
+        UNIQUE (library_id, track_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_library_tracks_track ON library_tracks(track_id);
+
+    CREATE TABLE IF NOT EXISTS playlists (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_system INTEGER NOT NULL DEFAULT 0
+    );
+
+    INSERT OR IGNORE INTO playlists (id, name, is_system) VALUES (1, '全部', 1);
+
+    CREATE TABLE IF NOT EXISTS playlist_tracks (
+        playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+        added_at REAL NOT NULL,
+        sort_order INTEGER NOT NULL,
+        PRIMARY KEY (playlist_id, track_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_playlist_tracks_order ON playlist_tracks(playlist_id, sort_order);
+
+    CREATE TABLE IF NOT EXISTS player_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_track_id INTEGER,
+        last_position REAL NOT NULL DEFAULT 0
+    );
+
+    INSERT OR IGNORE INTO player_state (id) VALUES (1);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        menu_bar_lyrics_enabled INTEGER NOT NULL DEFAULT 1,
+        menu_bar_lyrics_max_width REAL NOT NULL DEFAULT 160,
+        menu_bar_lyrics_show_icon INTEGER NOT NULL DEFAULT 1
+    );
+
+    INSERT OR IGNORE INTO app_settings (id) VALUES (1);
 
     CREATE TABLE IF NOT EXISTS play_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,46 +257,5 @@ final class AppDatabase {
     );
 
     CREATE INDEX IF NOT EXISTS idx_lyric_log_track ON lyric_download_log(track_id, created_at DESC);
-    """
-
-    private static let schemaV2DDL = """
-    CREATE TABLE IF NOT EXISTS playlists (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        is_system INTEGER NOT NULL DEFAULT 0
-    );
-
-    INSERT OR IGNORE INTO playlists (id, name, is_system) VALUES (1, '全部', 1);
-
-    CREATE TABLE IF NOT EXISTS playlist_tracks (
-        playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
-        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-        added_at REAL NOT NULL,
-        sort_order INTEGER NOT NULL,
-        PRIMARY KEY (playlist_id, track_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS library_tracks (
-        library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
-        track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
-        file_path TEXT NOT NULL,
-        file_mtime REAL NOT NULL,
-        file_size INTEGER NOT NULL,
-        PRIMARY KEY (library_id, file_path),
-        UNIQUE (library_id, track_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS player_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        last_track_id INTEGER,
-        last_position REAL NOT NULL DEFAULT 0
-    );
-
-    INSERT OR IGNORE INTO player_state (id) VALUES (1);
-
-    ALTER TABLE tracks ADD COLUMN content_hash TEXT;
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_tracks_content_hash ON tracks(content_hash);
-    CREATE INDEX IF NOT EXISTS idx_playlist_tracks_order ON playlist_tracks(playlist_id, sort_order);
-    CREATE INDEX IF NOT EXISTS idx_library_tracks_track ON library_tracks(track_id);
     """
 }

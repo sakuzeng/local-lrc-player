@@ -9,6 +9,7 @@ final class PlayerWindowController: NSWindowController {
     let trackRepository = TrackRepository()
     let playHistoryRepository = PlayHistoryRepository()
     let playerStateRepository = PlayerStateRepository()
+    var menuBarLyricsController: MenuBarLyricsController?
     var lyricCandidateDialog: LyricCandidateDialog?
 
     var tracks: [MusicTrack] = []

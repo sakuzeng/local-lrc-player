@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 2`（见 `AppDatabase.swift`） |
+| Schema 版本 | `PRAGMA user_version = 1`（当前完整结构见 `AppDatabase.schemaV1`） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -23,7 +23,7 @@ Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁
 
 ---
 
-## ER 关系图（v2）
+## ER 关系图
 
 ```mermaid
 erDiagram
@@ -34,6 +34,13 @@ erDiagram
     tracks ||--o{ play_history : played
     tracks ||--o{ lyric_download_log : audited
     player_state }o--o| tracks : lastTrack
+
+    app_settings {
+        INTEGER id PK
+        INTEGER menu_bar_lyrics_enabled
+        REAL menu_bar_lyrics_max_width
+        INTEGER menu_bar_lyrics_show_icon
+    }
 
     libraries {
         INTEGER id PK
@@ -100,8 +107,8 @@ erDiagram
 | `id` | INTEGER | **PK**, AUTOINCREMENT | 库 ID |
 | `path` | TEXT | NOT NULL, **UNIQUE** | 标准化绝对路径 |
 | `display_name` | TEXT | | 文件夹名 |
-| `last_track_id` | INTEGER | | **v1 遗留**，v2 播放恢复改用 `player_state` |
-| `last_position` | REAL | NOT NULL, DEFAULT 0 | **v1 遗留** |
+| `last_track_id` | INTEGER | | 遗留列，播放恢复用 `player_state` |
+| `last_position` | REAL | NOT NULL, DEFAULT 0 | 遗留列 |
 | `last_scanned_at` | REAL | | 上次 sync 完成时间 |
 | `is_active` | INTEGER | NOT NULL, DEFAULT 0 | 1 = 最近一次选择的文件夹（仅 UI 展示） |
 
@@ -166,7 +173,16 @@ erDiagram
 | `last_track_id` | INTEGER | 上次选中/播放的 `tracks.id` |
 | `last_position` | REAL | 上次进度（秒） |
 
-v1→v2 迁移：从 `is_active=1` 的 `libraries` 行复制到 `player_state`。
+---
+
+### `app_settings` — 全局 UI 偏好
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | INTEGER | 固定为 `1`（CHECK 约束） |
+| `menu_bar_lyrics_enabled` | INTEGER | 是否在菜单栏显示歌词（0/1，默认 1） |
+| `menu_bar_lyrics_max_width` | REAL | 菜单栏歌词最大宽度 pt（默认 160；预设 120/140/160 或自定义 80–400） |
+| `menu_bar_lyrics_show_icon` | INTEGER | 是否显示音符图标（0/1，默认 1）；图标固定在歌词右侧 |
 
 ---
 
@@ -179,15 +195,17 @@ v1→v2 迁移：从 `is_active=1` 的 `libraries` 行复制到 `player_state`�
 ## 代码与 Repository 映射
 
 ```text
-AppDatabase.swift           打开 DB、v1/v2 迁移
+AppDatabase.swift           打开 DB、schema v1 初始化
 TrackContentHasher.swift    SHA256 流式 hash
 DatabaseModels.swift        LibraryRecord / TrackRecord
 LibraryRepository.swift     registerLibrary、allLibraries
 TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
 PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
 PlayerStateRepository.swift player_state 读写
+AppSettingsRepository.swift app_settings 读写（菜单栏歌词设置）
 PlayHistoryRepository.swift play_history INSERT
 LyricLogRepository.swift    lyric_download_log INSERT
+MenuBarLyricsController.swift 菜单栏歌词 UI + 设置菜单
 ```
 
 ---
@@ -197,7 +215,7 @@ LyricLogRepository.swift    lyric_download_log INSERT
 ### 1. 启动 App
 
 ```text
-migrate → v2
+migrate → v1
 LibraryRepository.allLibraries()
 TrackRepository.syncAll(libraries)
 PlaylistRepository.masterPlaylistTracks()
@@ -238,7 +256,7 @@ reloadMasterPlaylist()
 ./test.sh
 ```
 
-覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本。
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新。
 
 ---
 
@@ -262,6 +280,14 @@ sqlite3 ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite \
 ## 备份与迁移
 
 备份 `~/Library/Application Support/LocalLrcPlayer/` 整个目录即可。换机后音乐与 `.lrc` 需单独拷贝；路径变化后重新选文件夹 sync。
+
+本地开发若调整了 schema 基线，删除旧库后重启 App 即可重建：
+
+```bash
+rm ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite
+```
+
+后续结构变更：在 `AppDatabase.swift` 增加 `migrateToV2` 等步骤，并将 `currentSchemaVersion` 递增。
 
 ---
 
