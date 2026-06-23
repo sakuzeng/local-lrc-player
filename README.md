@@ -273,7 +273,9 @@ Sources/LocalLrcPlayer/**/*.swift
 
 ### 拖动进度条后歌词不同步
 
-当前版本已经将拖动分成“预览歌词”和“松手后提交 seek”。对于 `.flac`，App 会优先使用同名 `.m4a`，没有时会用 `ffmpeg` 生成 ALAC 缓存再播放，因为 AVPlayer 直接播放 FLAC 时手动 seek 可能落点不准。
+当前版本将拖动分为「预览歌词」与「松手后一次 seek」：`completeSliderSeek` 在播放器时间稳定前阻止 `tick()` 覆盖歌词。未播放时可用曲目/文件时长预览，松手会更新 `restoredPlaybackPosition`。启动恢复与点播放时会用 `highlightAt` / `updateWhenReady` 立即定位歌词。
+
+对于 `.flac`，App 会优先使用同名 `.m4a`，没有时会用 `ffmpeg` 生成 ALAC 缓存再播放，因为 AVPlayer 直接播放 FLAC 时手动 seek 可能落点不准。
 
 当前代码查找的 `ffmpeg` 路径是：
 

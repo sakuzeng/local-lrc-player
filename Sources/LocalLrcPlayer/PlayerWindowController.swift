@@ -25,6 +25,7 @@ final class PlayerWindowController: NSWindowController {
     var playingTrackURL: URL?
     var restoredPlaybackPosition: TimeInterval?
     var lastSavedPlaybackTick = 0
+    var isApplyingProgrammaticSliderUpdate = false
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?

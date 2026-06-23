@@ -5,9 +5,9 @@ final class PlayerWindowLayout {
     let statusLabel = NSTextField(labelWithString: "请选择一个音乐文件夹")
     let tableView = NSTableView()
     let lyricsView = LyricsView()
-    let playButton = NSButton(title: "播放", target: nil, action: nil)
-    let previousButton = NSButton(title: "上一首", target: nil, action: nil)
-    let nextButton = NSButton(title: "下一首", target: nil, action: nil)
+    let playButton = NSButton(title: "", target: nil, action: nil)
+    let previousButton = NSButton(title: "", target: nil, action: nil)
+    let nextButton = NSButton(title: "", target: nil, action: nil)
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
 
@@ -31,14 +31,7 @@ final class PlayerWindowLayout {
     }
 
     private func setup(in contentView: NSView) {
-        [
-            previousButton,
-            playButton,
-            nextButton
-        ].forEach {
-            $0.bezelStyle = .rounded
-            $0.setContentHuggingPriority(.required, for: .horizontal)
-        }
+        configureTransportButtons()
 
         searchField.placeholderString = "搜索歌曲、歌手或专辑"
         searchField.sendsSearchStringImmediately = true
@@ -65,7 +58,17 @@ final class PlayerWindowLayout {
         let controls = NSStackView(views: [previousButton, playButton, nextButton, progressSlider, timeLabel])
         controls.orientation = .horizontal
         controls.alignment = .centerY
-        controls.spacing = 10
+        controls.spacing = 12
+
+        progressSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        progressSlider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        progressSlider.translatesAutoresizingMaskIntoConstraints = false
+        progressSlider.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        playButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            playButton.widthAnchor.constraint(equalToConstant: 36),
+            playButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
 
         let root = NSStackView(views: [splitView, statusLabel, controls])
         root.orientation = .vertical
@@ -107,5 +110,49 @@ final class PlayerWindowLayout {
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.allowsEmptySelection = true
         tableView.backgroundColor = .clear
+    }
+
+    func setPlayButtonShowsPause(_ showsPause: Bool) {
+        playButton.image = Self.symbolImage(
+            showsPause ? "pause.fill" : "play.fill",
+            pointSize: 17,
+            weight: .semibold
+        )
+        playButton.toolTip = showsPause ? "暂停" : "播放"
+    }
+
+    private func configureTransportButtons() {
+        previousButton.image = Self.symbolImage("backward.fill", pointSize: 15, weight: .semibold)
+        previousButton.imagePosition = .imageOnly
+        previousButton.isBordered = false
+        previousButton.bezelStyle = .regularSquare
+        previousButton.contentTintColor = .labelColor
+        previousButton.toolTip = "上一首"
+        previousButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        playButton.bezelStyle = .circular
+        playButton.controlSize = .large
+        playButton.imagePosition = .imageOnly
+        playButton.contentTintColor = .white
+        setPlayButtonShowsPause(false)
+        playButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        nextButton.image = Self.symbolImage("forward.fill", pointSize: 15, weight: .semibold)
+        nextButton.imagePosition = .imageOnly
+        nextButton.isBordered = false
+        nextButton.bezelStyle = .regularSquare
+        nextButton.contentTintColor = .labelColor
+        nextButton.toolTip = "下一首"
+        nextButton.setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    private static func symbolImage(
+        _ name: String,
+        pointSize: CGFloat,
+        weight: NSFont.Weight = .regular
+    ) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
     }
 }

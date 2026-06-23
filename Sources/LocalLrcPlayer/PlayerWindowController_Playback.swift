@@ -13,26 +13,14 @@ extension PlayerWindowController {
         trackListDataSource.playingTrackURL = playingTrackURL
         trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
         layout.tableView.reloadData()
-        loadLyrics(for: track)
-
         restoredPlaybackPosition = max(position, 0)
-        let duration = track.duration ?? 0
-        if duration > 0 {
-            let preview = min(restoredPlaybackPosition ?? 0, duration)
-            layout.progressSlider.doubleValue = preview / duration
-            updateTimeLabel(current: preview, duration: duration)
-            layout.lyricsView.update(for: preview, forceScroll: true)
-        } else {
-            layout.progressSlider.doubleValue = 0
-            updateTimeLabel(current: restoredPlaybackPosition ?? 0, duration: 0)
-            if let preview = restoredPlaybackPosition {
-                layout.lyricsView.update(for: preview, forceScroll: true)
-            }
+        loadLyrics(for: track, highlightAt: restoredPlaybackPosition)
+        DispatchQueue.main.async { [weak self] in
+            self?.syncPlaybackPreview(at: position, updateLyrics: false)
         }
 
-        layout.playButton.title = "播放"
+        layout.setPlayButtonShowsPause(false)
         layout.statusLabel.stringValue = "已恢复上次选中的歌曲：\(track.displayName)"
-        syncMenuBarLyrics(at: restoredPlaybackPosition ?? 0)
     }
 
     func playTrack(
@@ -62,19 +50,23 @@ extension PlayerWindowController {
         }
 
         playbackController.play(url: playbackURL)
-        loadLyrics(for: track)
+
+        let highlightAt = resumePosition ?? restoredPlaybackPosition ?? currentSliderPreviewTime()
+        loadLyrics(for: track, highlightAt: highlightAt > 0 ? highlightAt : nil)
+
         layout.statusLabel.stringValue = "正在播放：\(track.displayName)"
-        layout.playButton.title = "暂停"
+        layout.setPlayButtonShowsPause(true)
         updateControlState()
 
         if let trackId = track.id {
+            let positionForHistory = resumePosition ?? restoredPlaybackPosition ?? highlightAt
             try? playHistoryRepository.recordPlayback(
                 trackId: trackId,
-                position: resumePosition ?? restoredPlaybackPosition ?? 0
+                position: positionForHistory
             )
             persistPlaybackState(
                 trackId: trackId,
-                position: resumePosition ?? restoredPlaybackPosition ?? 0
+                position: positionForHistory
             )
         }
 
@@ -91,13 +83,16 @@ extension PlayerWindowController {
         }
 
         if let seekTarget, seekTarget > 0 {
+            syncPlaybackPreview(at: seekTarget)
             playbackController.seek(to: seekTarget) { [weak self] _ in
                 self?.syncUIWithPlayback()
             }
+        } else if highlightAt > 0 {
+            syncPlaybackPreview(at: highlightAt)
         }
     }
 
-    func loadLyrics(for track: MusicTrack) {
+    func loadLyrics(for track: MusicTrack, highlightAt time: TimeInterval? = nil) {
         menuBarLyricsController?.setTrackTitle(track.displayName)
 
         guard let lyricURL = track.lyricURL else {
@@ -109,11 +104,11 @@ extension PlayerWindowController {
 
         do {
             let contents = try String(contentsOf: lyricURL, encoding: .utf8)
-            renderLyrics(contents)
+            renderLyrics(contents, highlightAt: time)
         } catch {
             do {
                 let contents = try String(contentsOf: lyricURL, encoding: .utf16)
-                renderLyrics(contents)
+                renderLyrics(contents, highlightAt: time)
             } catch {
                 lrcLines = []
                 layout.lyricsView.showPlaceholder("歌词读取失败")
@@ -122,14 +117,49 @@ extension PlayerWindowController {
         }
     }
 
-    func renderLyrics(_ contents: String) {
+    func renderLyrics(_ contents: String, highlightAt time: TimeInterval? = nil) {
         lrcLines = LrcParser.parse(contents)
         if lrcLines.isEmpty {
             layout.lyricsView.showPlaceholder("歌词文件为空或格式无法识别")
         } else {
-            layout.lyricsView.render(lrcLines)
+            layout.lyricsView.render(lrcLines, scrollToTop: time == nil)
+            if let time, time >= 0 {
+                layout.lyricsView.updateWhenReady(for: time, forceScroll: true)
+            }
         }
-        syncMenuBarLyrics()
+        syncMenuBarLyrics(at: time)
+    }
+
+    func syncPlaybackPreview(at time: TimeInterval, updateLyrics: Bool = true) {
+        guard time.isFinite, time >= 0 else {
+            return
+        }
+
+        if let duration = resolvedPlaybackDuration(), duration > 0 {
+            let clamped = min(time, duration)
+            isApplyingProgrammaticSliderUpdate = true
+            defer { isApplyingProgrammaticSliderUpdate = false }
+            layout.progressSlider.doubleValue = min(max(clamped / duration, 0), 1)
+            updateTimeLabel(current: clamped, duration: duration)
+            if updateLyrics {
+                layout.lyricsView.updateWhenReady(for: clamped, forceScroll: true)
+            }
+            syncMenuBarLyrics(at: clamped)
+        } else if updateLyrics {
+            updateTimeLabel(current: time, duration: 0)
+            layout.lyricsView.updateWhenReady(for: time, forceScroll: true)
+            syncMenuBarLyrics(at: time)
+        } else {
+            updateTimeLabel(current: time, duration: 0)
+            syncMenuBarLyrics(at: time)
+        }
+    }
+
+    func currentSliderPreviewTime() -> TimeInterval {
+        guard let duration = resolvedPlaybackDuration(), duration > 0 else {
+            return 0
+        }
+        return min(max(duration * layout.progressSlider.doubleValue, 0), duration)
     }
 
     func syncMenuBarLyrics(at time: TimeInterval? = nil) {
@@ -179,13 +209,13 @@ extension PlayerWindowController {
 
         if playbackController.isPlaying {
             playbackController.pause()
-            layout.playButton.title = "播放"
+            layout.setPlayButtonShowsPause(false)
             layout.statusLabel.stringValue = "已暂停"
             saveCurrentPlaybackState()
             syncMenuBarLyrics()
         } else if playbackController.hasLoadedItem {
             playbackController.resume()
-            layout.playButton.title = "暂停"
+            layout.setPlayButtonShowsPause(true)
             layout.statusLabel.stringValue = "正在播放：\(tracks[playing].displayName)"
         } else {
             playTrack(at: playing, startFromSavedPosition: true)
@@ -221,7 +251,7 @@ extension PlayerWindowController {
             playTrack(at: nextIndex)
         } else {
             playbackController.resetToStart()
-            layout.playButton.title = "播放"
+            layout.setPlayButtonShowsPause(false)
             layout.statusLabel.stringValue = "播放结束"
             saveCurrentPlaybackState(position: 0)
             syncMenuBarLyrics(at: 0)
@@ -229,18 +259,15 @@ extension PlayerWindowController {
     }
 
     @objc func progressChanged() {
-        guard let duration = playbackController.duration(), duration > 0 else {
+        guard !isApplyingProgrammaticSliderUpdate else {
+            return
+        }
+        guard let duration = resolvedPlaybackDuration(), duration > 0 else {
             return
         }
 
-        let targetTime = duration * layout.progressSlider.doubleValue
-        updateTimeLabel(current: targetTime, duration: duration)
-        layout.lyricsView.update(for: targetTime, forceScroll: true)
-        syncMenuBarLyrics(at: targetTime)
-
-        if !layout.progressSlider.isTrackingMouse {
-            commitProgressSeek(resumeAfterSeek: false)
-        }
+        let targetTime = min(max(duration * layout.progressSlider.doubleValue, 0), duration)
+        applyPlaybackDisplayTime(targetTime, duration: duration, forceScroll: true)
     }
 
     func beginProgressTracking() {
@@ -252,7 +279,18 @@ extension PlayerWindowController {
     }
 
     func commitProgressSeek(resumeAfterSeek: Bool) {
-        guard let duration = playbackController.duration(), duration > 0 else {
+        guard let duration = resolvedPlaybackDuration(), duration > 0 else {
+            isSeekingWithSlider = false
+            wasPlayingBeforeSliderTracking = false
+            return
+        }
+
+        let targetTime = min(max(duration * layout.progressSlider.doubleValue, 0), duration)
+        applyPlaybackDisplayTime(targetTime, duration: duration, forceScroll: true)
+        restoredPlaybackPosition = targetTime
+
+        guard playbackController.hasLoadedItem else {
+            saveCurrentPlaybackState(position: targetTime)
             isSeekingWithSlider = false
             wasPlayingBeforeSliderTracking = false
             return
@@ -261,10 +299,6 @@ extension PlayerWindowController {
         isSeekingWithSlider = true
         seekGeneration += 1
         let generation = seekGeneration
-        let targetTime = duration * layout.progressSlider.doubleValue
-        updateTimeLabel(current: targetTime, duration: duration)
-        layout.lyricsView.update(for: targetTime, forceScroll: true)
-        syncMenuBarLyrics(at: targetTime)
 
         playbackController.seek(to: targetTime) { [weak self] _ in
             guard let self else {
@@ -274,16 +308,59 @@ extension PlayerWindowController {
                 return
             }
 
-            self.syncUIWithPlayback()
-            self.isSeekingWithSlider = false
-            self.wasPlayingBeforeSliderTracking = false
-            self.saveCurrentPlaybackState()
-            if resumeAfterSeek {
-                self.playbackController.resume()
-                if let index = self.currentTrackIndex {
-                    self.layout.statusLabel.stringValue = "正在播放：\(self.tracks[index].displayName)"
-                    self.layout.playButton.title = "暂停"
-                }
+            self.completeSliderSeek(
+                expectedTime: targetTime,
+                duration: duration,
+                generation: generation,
+                resumeAfterSeek: resumeAfterSeek
+            )
+        }
+    }
+
+    private func completeSliderSeek(
+        expectedTime: TimeInterval,
+        duration: TimeInterval,
+        generation: Int,
+        resumeAfterSeek: Bool,
+        attempt: Int = 0
+    ) {
+        guard generation == seekGeneration else {
+            return
+        }
+
+        let playerTime = playbackController.currentTime() ?? 0
+        let playerMatches = playerTime.isFinite
+            && playerTime > 0.1
+            && abs(playerTime - expectedTime) <= 0.35
+        let timedOut = attempt >= 30
+        let settled = playerMatches || timedOut
+        let displayTime = playerMatches
+            ? min(max(playerTime, 0), duration)
+            : expectedTime
+
+        applyPlaybackDisplayTime(displayTime, duration: duration, forceScroll: true)
+
+        guard settled else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.completeSliderSeek(
+                    expectedTime: expectedTime,
+                    duration: duration,
+                    generation: generation,
+                    resumeAfterSeek: resumeAfterSeek,
+                    attempt: attempt + 1
+                )
+            }
+            return
+        }
+
+        saveCurrentPlaybackState(position: displayTime)
+        isSeekingWithSlider = false
+        wasPlayingBeforeSliderTracking = false
+        if resumeAfterSeek {
+            playbackController.resume()
+            if let index = currentTrackIndex {
+                layout.statusLabel.stringValue = "正在播放：\(tracks[index].displayName)"
+                layout.setPlayButtonShowsPause(true)
             }
         }
     }
@@ -291,12 +368,27 @@ extension PlayerWindowController {
     func syncUIWithPlayback() {
         let current = playbackController.currentTime() ?? 0
         let duration = playbackController.duration() ?? 0
-        if duration > 0 {
-            layout.progressSlider.doubleValue = min(max(current / duration, 0), 1)
+        applyPlaybackDisplayTime(current, duration: duration, forceScroll: true)
+    }
+
+    private func applyPlaybackDisplayTime(
+        _ time: TimeInterval,
+        duration: TimeInterval,
+        forceScroll: Bool
+    ) {
+        isApplyingProgrammaticSliderUpdate = true
+        defer { isApplyingProgrammaticSliderUpdate = false }
+
+        if duration.isFinite, duration > 0, time.isFinite {
+            layout.progressSlider.doubleValue = min(max(time / duration, 0), 1)
         }
-        updateTimeLabel(current: current, duration: duration)
-        layout.lyricsView.update(for: current, forceScroll: true)
-        syncMenuBarLyrics(at: current)
+        updateTimeLabel(current: time, duration: duration)
+        if forceScroll {
+            layout.lyricsView.updateWhenReady(for: time, forceScroll: true)
+        } else {
+            layout.lyricsView.update(for: time, forceScroll: false)
+        }
+        syncMenuBarLyrics(at: time)
     }
 
     func startTimer() {
@@ -315,10 +407,7 @@ extension PlayerWindowController {
         let duration = playbackController.duration() ?? 0
 
         if duration.isFinite, duration > 0, current.isFinite {
-            layout.progressSlider.doubleValue = min(max(current / duration, 0), 1)
-            updateTimeLabel(current: current, duration: duration)
-            layout.lyricsView.update(for: current, forceScroll: false)
-            syncMenuBarLyrics(at: current)
+            applyPlaybackDisplayTime(current, duration: duration, forceScroll: false)
 
             if playbackController.isPlaying {
                 lastSavedPlaybackTick += 1
@@ -355,5 +444,23 @@ extension PlayerWindowController {
 
         let totalSeconds = Int(time.rounded(.down))
         return String(format: "%02d:%02d", totalSeconds / 60, totalSeconds % 60)
+    }
+
+    /// 播放中用 AVPlayer 时长；未播放时用曲目 ID3 缓存时长，供进度条预览与 seek 落点。
+    func resolvedPlaybackDuration() -> TimeInterval? {
+        if let duration = playbackController.duration(), duration.isFinite, duration > 0 {
+            return duration
+        }
+        guard let index = currentTrackIndex, tracks.indices.contains(index) else {
+            return nil
+        }
+        if let duration = tracks[index].duration, duration.isFinite, duration > 0 {
+            return duration
+        }
+        let fileDuration = TrackMetadataReader.read(from: tracks[index].audioURL).duration
+        if let fileDuration, fileDuration.isFinite, fileDuration > 0 {
+            return fileDuration
+        }
+        return nil
     }
 }

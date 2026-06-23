@@ -32,7 +32,7 @@ final class LyricsView: NSScrollView {
         ))
     }
 
-    func render(_ lines: [LrcLine]) {
+    func render(_ lines: [LrcLine], scrollToTop: Bool = true) {
         self.lines = lines
         lineRanges = []
         activeLineIndex = nil
@@ -52,10 +52,29 @@ final class LyricsView: NSScrollView {
             string: text as String,
             attributes: normalLyricAttributes(paragraphStyle: makeParagraphStyle())
         ))
-        textView.scrollToBeginningOfDocument(nil)
+        if scrollToTop {
+            textView.scrollToBeginningOfDocument(nil)
+        }
+    }
+
+    /// 文本布局在 `render` 后常需下一帧才稳定；启动恢复或重新加载歌词时用此方法确保滚动到位。
+    func updateWhenReady(for time: TimeInterval, forceScroll: Bool) {
+        applyUpdate(for: time, forceScroll: forceScroll)
+        textView.layoutSubtreeIfNeeded()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+            self.textView.layoutSubtreeIfNeeded()
+            self.applyUpdate(for: time, forceScroll: forceScroll)
+        }
     }
 
     func update(for time: TimeInterval, forceScroll: Bool) {
+        applyUpdate(for: time, forceScroll: forceScroll)
+    }
+
+    private func applyUpdate(for time: TimeInterval, forceScroll: Bool) {
         guard
             let index = LrcParser.activeLineIndex(for: time, in: lines),
             lineRanges.indices.contains(index)
@@ -130,13 +149,14 @@ final class LyricsView: NSScrollView {
 
         let clipView = contentView
         let visibleHeight = clipView.bounds.height
-        let documentHeight = max(textView.bounds.height, textView.fittingSize.height)
-        guard visibleHeight > 0, documentHeight > visibleHeight else {
+        guard visibleHeight > 0 else {
             return
         }
 
-        let focusY = lineRect.midY - visibleHeight * 0.48
+        layoutManager.ensureLayout(for: textContainer)
+        let documentHeight = max(textView.bounds.height, textView.fittingSize.height)
         let maxY = max(0, documentHeight - visibleHeight)
+        let focusY = lineRect.midY - visibleHeight * 0.48
         let targetOrigin = NSPoint(x: clipView.bounds.origin.x, y: min(max(focusY, 0), maxY))
 
         if animated {

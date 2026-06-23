@@ -27,6 +27,7 @@
 - **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕，并滚回顶部显示「音乐库」。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
 - 主窗口**毛玻璃质感**：透明标题栏 + unified 工具栏 + `NSVisualEffectView` 背景；列表/歌词无边框。
+- 底部**图标化播放控制**与自定义进度条（`PlayerWindowLayout` / `SeekSlider`）。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -63,6 +64,7 @@
 - **多显示器**（2026-06-23）：设置窗口 `positionOnActiveScreen()` 跟随主播放窗口屏幕，避免 ⌘, 跑到外接主屏。
 - **设置滚动**（2026-06-23）：翻转文档坐标 + `scrollContentToTop()`，首次 ⌘, 不再默认停在「歌词」区块。
 - **窗口质感**（2026-06-23）：`fullSizeContentView`、unified 工具栏、毛玻璃背景；内容区对齐 safe area。
+- **播放区 UI + seek**（2026-06-23）：SF Symbol 播放控制、自定义 `SeekSlider`；修复拖动/启动时歌词不同步、未播放时拖动无效、圆点与轨道对齐等问题（`PlayerWindowController_Playback`、`LyricsView.updateWhenReady`、`completeSliderSeek`）。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
