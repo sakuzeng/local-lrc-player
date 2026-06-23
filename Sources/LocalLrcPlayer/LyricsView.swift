@@ -2,10 +2,30 @@ import AppKit
 import QuartzCore
 
 final class LyricsView: NSScrollView {
+    private struct LyricLineAppearance {
+        let fontSize: CGFloat
+        let weight: NSFont.Weight
+        let color: NSColor
+
+        func lerped(to other: LyricLineAppearance, progress: CGFloat) -> LyricLineAppearance {
+            let blendedColor = color.blended(withFraction: progress, of: other.color) ?? other.color
+            let weight: NSFont.Weight = progress >= 0.85 ? other.weight : self.weight
+            return LyricLineAppearance(
+                fontSize: fontSize + (other.fontSize - fontSize) * progress,
+                weight: weight,
+                color: blendedColor
+            )
+        }
+    }
+
     private let textView = NSTextView()
     private var lines: [LrcLine] = []
     private var lineRanges: [NSRange] = []
     private var activeLineIndex: Int?
+    private var styleAnimationTimer: Timer?
+    private var lastScrollPadding: CGFloat = 32
+    private let styleAnimationDuration: TimeInterval = 0.28
+    private let focusCenterRatio: CGFloat = 0.5
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -16,10 +36,16 @@ final class LyricsView: NSScrollView {
         nil
     }
 
+    deinit {
+        cancelStyleAnimation()
+    }
+
     func showPlaceholder(_ text: String) {
+        cancelStyleAnimation()
         lines = []
         lineRanges = []
         activeLineIndex = nil
+        applyScrollPadding(repositionActiveLine: false)
 
         let paragraphStyle = makeParagraphStyle()
         textView.textStorage?.setAttributedString(NSAttributedString(
@@ -33,9 +59,11 @@ final class LyricsView: NSScrollView {
     }
 
     func render(_ lines: [LrcLine], scrollToTop: Bool = true) {
+        cancelStyleAnimation()
         self.lines = lines
         lineRanges = []
         activeLineIndex = nil
+        applyScrollPadding(repositionActiveLine: false)
 
         let text = NSMutableString()
         for line in lines {
@@ -59,22 +87,22 @@ final class LyricsView: NSScrollView {
 
     /// 文本布局在 `render` 后常需下一帧才稳定；启动恢复或重新加载歌词时用此方法确保滚动到位。
     func updateWhenReady(for time: TimeInterval, forceScroll: Bool) {
-        applyUpdate(for: time, forceScroll: forceScroll)
+        applyUpdate(for: time, forceScroll: forceScroll, animateStyles: !forceScroll)
         textView.layoutSubtreeIfNeeded()
         DispatchQueue.main.async { [weak self] in
             guard let self else {
                 return
             }
             self.textView.layoutSubtreeIfNeeded()
-            self.applyUpdate(for: time, forceScroll: forceScroll)
+            self.applyUpdate(for: time, forceScroll: forceScroll, animateStyles: !forceScroll)
         }
     }
 
     func update(for time: TimeInterval, forceScroll: Bool) {
-        applyUpdate(for: time, forceScroll: forceScroll)
+        applyUpdate(for: time, forceScroll: forceScroll, animateStyles: !forceScroll)
     }
 
-    private func applyUpdate(for time: TimeInterval, forceScroll: Bool) {
+    private func applyUpdate(for time: TimeInterval, forceScroll: Bool, animateStyles: Bool) {
         guard
             let index = LrcParser.activeLineIndex(for: time, in: lines),
             lineRanges.indices.contains(index)
@@ -82,27 +110,27 @@ final class LyricsView: NSScrollView {
             return
         }
 
-        if activeLineIndex == index, !forceScroll {
+        applyScrollPadding(repositionActiveLine: false)
+        textView.layoutSubtreeIfNeeded()
+
+        if activeLineIndex == index {
+            if forceScroll {
+                scrollLyricRangeToFocus(lineRanges[index], animated: false)
+            }
             return
         }
 
-        let paragraphStyle = makeParagraphStyle()
-        if let oldIndex = activeLineIndex, lineRanges.indices.contains(oldIndex) {
-            textView.textStorage?.setAttributes(
-                normalLyricAttributes(paragraphStyle: paragraphStyle),
-                range: lineRanges[oldIndex]
-            )
-        }
-
-        let activeRange = lineRanges[index]
-        textView.textStorage?.setAttributes([
-            .font: NSFont.systemFont(ofSize: 22, weight: .semibold),
-            .foregroundColor: NSColor.controlAccentColor,
-            .paragraphStyle: paragraphStyle
-        ], range: activeRange)
-
+        let oldIndex = activeLineIndex
         activeLineIndex = index
-        scrollLyricRangeToFocus(activeRange, animated: !forceScroll)
+
+        if animateStyles, let oldIndex {
+            animateStyleTransition(from: oldIndex, to: index)
+            scrollLyricRangeToFocus(lineRanges[index], animated: !forceScroll)
+        } else {
+            cancelStyleAnimation()
+            applyLineStyles(activeIndex: index)
+            scrollLyricRangeToFocus(lineRanges[index], animated: !forceScroll)
+        }
     }
 
     private func setup() {
@@ -110,7 +138,7 @@ final class LyricsView: NSScrollView {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.backgroundColor = .clear
-        textView.textContainerInset = NSSize(width: 28, height: 28)
+        textView.textContainerInset = NSSize(width: 28, height: 32)
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
@@ -126,11 +154,42 @@ final class LyricsView: NSScrollView {
         backgroundColor = .clear
     }
 
+    override func layout() {
+        super.layout()
+        applyScrollPadding(repositionActiveLine: true)
+    }
+
     var onMouseDown: (() -> Void)?
 
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
         super.mouseDown(with: event)
+    }
+
+    /// 上下留白约为半屏高，使首尾歌词也能滚到视口正中，而不是贴底。
+    private func applyScrollPadding(repositionActiveLine: Bool) {
+        let visibleHeight = contentView.bounds.height > 0 ? contentView.bounds.height : bounds.height
+        guard visibleHeight > 0 else {
+            return
+        }
+
+        let verticalPadding = max(32, visibleHeight * focusCenterRatio)
+        guard abs(verticalPadding - lastScrollPadding) > 0.5 else {
+            return
+        }
+
+        lastScrollPadding = verticalPadding
+        textView.textContainerInset = NSSize(width: 28, height: verticalPadding)
+        textView.layoutSubtreeIfNeeded()
+
+        guard repositionActiveLine,
+              let index = activeLineIndex,
+              lineRanges.indices.contains(index)
+        else {
+            return
+        }
+
+        scrollLyricRangeToFocus(lineRanges[index], animated: false)
     }
 
     private func scrollLyricRangeToFocus(_ range: NSRange, animated: Bool) {
@@ -156,7 +215,7 @@ final class LyricsView: NSScrollView {
         layoutManager.ensureLayout(for: textContainer)
         let documentHeight = max(textView.bounds.height, textView.fittingSize.height)
         let maxY = max(0, documentHeight - visibleHeight)
-        let focusY = lineRect.midY - visibleHeight * 0.48
+        let focusY = lineRect.midY - visibleHeight * focusCenterRatio
         let targetOrigin = NSPoint(x: clipView.bounds.origin.x, y: min(max(focusY, 0), maxY))
 
         if animated {
@@ -180,11 +239,106 @@ final class LyricsView: NSScrollView {
         return paragraphStyle
     }
 
+    private func distantLineAppearance() -> LyricLineAppearance {
+        targetAppearance(forLineIndex: 0, activeIndex: 4)
+    }
+
     private func normalLyricAttributes(paragraphStyle: NSParagraphStyle) -> [NSAttributedString.Key: Any] {
+        attributes(for: distantLineAppearance(), paragraphStyle: paragraphStyle)
+    }
+
+    private func targetAppearance(forLineIndex index: Int, activeIndex: Int) -> LyricLineAppearance {
+        let distance = abs(index - activeIndex)
+        if distance == 0 {
+            return LyricLineAppearance(
+                fontSize: 22,
+                weight: .semibold,
+                color: .controlAccentColor
+            )
+        }
+
+        let falloff = min(distance, 4)
+        let alpha = max(0.2, 1.0 - CGFloat(falloff) * 0.22)
+        let fontSize = max(16, 18 - CGFloat(min(falloff, 3)) * 0.75)
+        let color: NSColor
+        switch falloff {
+        case 1:
+            color = NSColor.labelColor.withAlphaComponent(alpha)
+        case 2:
+            color = NSColor.secondaryLabelColor.withAlphaComponent(min(1, alpha + 0.08))
+        default:
+            color = NSColor.tertiaryLabelColor.withAlphaComponent(min(1, alpha + 0.12))
+        }
+        return LyricLineAppearance(fontSize: fontSize, weight: .regular, color: color)
+    }
+
+    private func attributes(
+        for appearance: LyricLineAppearance,
+        paragraphStyle: NSParagraphStyle
+    ) -> [NSAttributedString.Key: Any] {
         [
-            .font: NSFont.systemFont(ofSize: 18, weight: .regular),
-            .foregroundColor: NSColor.labelColor,
+            .font: NSFont.systemFont(ofSize: appearance.fontSize, weight: appearance.weight),
+            .foregroundColor: appearance.color,
             .paragraphStyle: paragraphStyle
         ]
+    }
+
+    private func applyLineStyles(activeIndex: Int) {
+        let paragraphStyle = makeParagraphStyle()
+        for index in lineRanges.indices {
+            let appearance = targetAppearance(forLineIndex: index, activeIndex: activeIndex)
+            textView.textStorage?.setAttributes(
+                attributes(for: appearance, paragraphStyle: paragraphStyle),
+                range: lineRanges[index]
+            )
+        }
+    }
+
+    private func animateStyleTransition(from oldIndex: Int, to newIndex: Int) {
+        cancelStyleAnimation()
+        let fromAppearances = lineRanges.indices.map {
+            targetAppearance(forLineIndex: $0, activeIndex: oldIndex)
+        }
+        let toAppearances = lineRanges.indices.map {
+            targetAppearance(forLineIndex: $0, activeIndex: newIndex)
+        }
+        let start = CACurrentMediaTime()
+
+        styleAnimationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self else {
+                timer.invalidate()
+                return
+            }
+
+            let elapsed = CACurrentMediaTime() - start
+            let raw = min(1, elapsed / self.styleAnimationDuration)
+            let progress = self.easeInOut(CGFloat(raw))
+            let paragraphStyle = self.makeParagraphStyle()
+
+            for index in self.lineRanges.indices {
+                let appearance = fromAppearances[index].lerped(to: toAppearances[index], progress: progress)
+                self.textView.textStorage?.setAttributes(
+                    self.attributes(for: appearance, paragraphStyle: paragraphStyle),
+                    range: self.lineRanges[index]
+                )
+            }
+
+            if raw >= 1 {
+                timer.invalidate()
+                self.styleAnimationTimer = nil
+            }
+        }
+    }
+
+    private func cancelStyleAnimation() {
+        styleAnimationTimer?.invalidate()
+        styleAnimationTimer = nil
+    }
+
+    private func easeInOut(_ value: CGFloat) -> CGFloat {
+        if value < 0.5 {
+            return 2 * value * value
+        }
+        return 1 - pow(-2 * value + 2, 2) / 2
     }
 }
