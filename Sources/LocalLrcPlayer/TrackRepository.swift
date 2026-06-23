@@ -205,6 +205,49 @@ final class TrackRepository {
         }
     }
 
+    func removeLibrary(libraryId: Int64) throws -> Set<Int64> {
+        try database.write { db in
+            var trackIds = Set<Int64>()
+            let selectSQL = "SELECT DISTINCT track_id FROM library_tracks WHERE library_id = ?;"
+            let select = try database.prepare(db, sql: selectSQL)
+            defer { sqlite3_finalize(select) }
+            sqlite3_bind_int64(select, 1, libraryId)
+            while sqlite3_step(select) == SQLITE_ROW {
+                trackIds.insert(sqlite3_column_int64(select, 0))
+            }
+
+            let deleteLinksSQL = "DELETE FROM library_tracks WHERE library_id = ?;"
+            let deleteLinks = try database.prepare(db, sql: deleteLinksSQL)
+            defer { sqlite3_finalize(deleteLinks) }
+            sqlite3_bind_int64(deleteLinks, 1, libraryId)
+            guard sqlite3_step(deleteLinks) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+
+            var deletedTrackIds = Set<Int64>()
+            for trackId in trackIds {
+                if try shouldDeleteTrack(db: db, trackId: trackId) {
+                    try deleteTrack(db: db, trackId: trackId)
+                    deletedTrackIds.insert(trackId)
+                } else {
+                    try repointLibraryIdIfNeeded(db: db, trackId: trackId, removedLibraryId: libraryId)
+                    try repointCanonicalPathIfNeeded(db: db, trackId: trackId)
+                }
+            }
+
+            let deleteLibrarySQL = "DELETE FROM libraries WHERE id = ?;"
+            let deleteLibrary = try database.prepare(db, sql: deleteLibrarySQL)
+            defer { sqlite3_finalize(deleteLibrary) }
+            sqlite3_bind_int64(deleteLibrary, 1, libraryId)
+            guard sqlite3_step(deleteLibrary) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+
+            try clearPlayerStateIfTracksDeleted(db: db, deletedTrackIds: deletedTrackIds)
+            return deletedTrackIds
+        }
+    }
+
     func markHasLyric(trackId: Int64, hasLyric: Bool = true) throws {
         try database.write { db in
             try updateHasLyric(db: db, trackId: trackId, hasLyric: hasLyric)
@@ -429,6 +472,69 @@ final class TrackRepository {
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, trackId)
         guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppDatabaseError.stepFailed(database.errorMessage(db))
+        }
+    }
+
+    private func repointLibraryIdIfNeeded(
+        db: OpaquePointer,
+        trackId: Int64,
+        removedLibraryId: Int64
+    ) throws {
+        let currentSQL = "SELECT library_id FROM tracks WHERE id = ? LIMIT 1;"
+        let current = try database.prepare(db, sql: currentSQL)
+        defer { sqlite3_finalize(current) }
+        sqlite3_bind_int64(current, 1, trackId)
+        guard sqlite3_step(current) == SQLITE_ROW else {
+            return
+        }
+        let libraryId = sqlite3_column_int64(current, 0)
+        guard libraryId == removedLibraryId else {
+            return
+        }
+
+        let nextSQL = "SELECT library_id FROM library_tracks WHERE track_id = ? LIMIT 1;"
+        let next = try database.prepare(db, sql: nextSQL)
+        defer { sqlite3_finalize(next) }
+        sqlite3_bind_int64(next, 1, trackId)
+        guard sqlite3_step(next) == SQLITE_ROW else {
+            return
+        }
+        let nextLibraryId = sqlite3_column_int64(next, 0)
+
+        let updateSQL = "UPDATE tracks SET library_id = ? WHERE id = ?;"
+        let update = try database.prepare(db, sql: updateSQL)
+        defer { sqlite3_finalize(update) }
+        sqlite3_bind_int64(update, 1, nextLibraryId)
+        sqlite3_bind_int64(update, 2, trackId)
+        guard sqlite3_step(update) == SQLITE_DONE else {
+            throw AppDatabaseError.stepFailed(database.errorMessage(db))
+        }
+    }
+
+    private func clearPlayerStateIfTracksDeleted(db: OpaquePointer, deletedTrackIds: Set<Int64>) throws {
+        guard !deletedTrackIds.isEmpty else {
+            return
+        }
+
+        let stateSQL = "SELECT last_track_id FROM player_state WHERE id = 1 LIMIT 1;"
+        let state = try database.prepare(db, sql: stateSQL)
+        defer { sqlite3_finalize(state) }
+        guard sqlite3_step(state) == SQLITE_ROW else {
+            return
+        }
+        guard sqlite3_column_type(state, 0) != SQLITE_NULL else {
+            return
+        }
+        let lastTrackId = sqlite3_column_int64(state, 0)
+        guard deletedTrackIds.contains(lastTrackId) else {
+            return
+        }
+
+        let updateSQL = "UPDATE player_state SET last_track_id = NULL, last_position = 0 WHERE id = 1;"
+        let update = try database.prepare(db, sql: updateSQL)
+        defer { sqlite3_finalize(update) }
+        guard sqlite3_step(update) == SQLITE_DONE else {
             throw AppDatabaseError.stepFailed(database.errorMessage(db))
         }
     }

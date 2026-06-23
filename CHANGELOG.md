@@ -2,6 +2,32 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-06-23
+
+### Added
+
+- **设置窗口**（`SettingsWindowController`）：应用菜单 **设置…** 或 **⌘,** 打开；收纳音乐库管理、歌词 Cookie/下载、菜单栏歌词配置。
+- 设置中可**移除已注册音乐文件夹**（不删除磁盘文件）；`LibraryRepository.deleteLibrary` + `TrackRepository.removeLibrary` 清理 `library_tracks`、孤儿 `tracks`、`playlist_tracks`，并在需要时重定向 `tracks.library_id` / 规范路径。
+- 主窗口 **NSToolbar**（`PlayerWindowToolbar`）：选择文件夹、刷新、搜索；主内容区仅保留列表、歌词与播放控制。
+- 数据库测试：`testRemovingLibraryKeepsSharedTrack`、`testRemovingLibraryClearsPlayerState`。
+
+### Changed
+
+- Cookie 来源、设置/重置 Cookie、下载当前歌词、补全缺失歌词从工具栏弹出面板移至设置窗口。
+- 设置界面采用分组卡片 + 表单行布局（音乐库 / 歌词 / 菜单栏歌词三块统一风格）。
+- 移除主窗口 `lyricToolsPanel` 及工具栏「⋯」歌词工具按钮。
+
+### Fixed
+
+- 顺序播放自动切歌后，空格/菜单栏误作用于列表第一首：`TrackListDataSource.userSelectedTrackIndex` 与 `playTrack` 同步选中行。
+- 菜单栏歌词：连续两行相同文字时第二行不再卡在已滚完状态。
+- 设置窗口 **⌘,** 打开时居中到**主播放窗口所在屏幕**（不再固定到系统主显示器）。
+
+### Verified
+
+- `./build.sh` 构建成功。
+- `./test.sh` 全部通过。
+
 ## 2026-06-15
 
 ### Added
@@ -10,9 +36,12 @@
 - 菜单栏歌词设置存入 SQLite `app_settings` 表：开关、最大宽度、是否显示图标。
 - 数据库 schema 合并为 **v1** 基线（本地开发）；移除 v2–v4 分步迁移与 `display_settings` 表。
 - 「视图」菜单与菜单栏项内可配置菜单栏歌词；点击菜单栏项可显示主窗口、播放/暂停、切歌。
+- 主窗口顶部改用 `NSToolbar`：选择文件夹、刷新、库路径、搜索、歌词工具（弹出面板）合并为一行工具栏。
 
 ### Fixed
 
+- 顺序播放自动切歌后，空格/菜单栏播放暂停作用于当前正在播放的曲目；仅当用户主动点选其他歌曲时才切换播放。
+- 菜单栏歌词：连续两行相同文字时第二行不再卡在已滚完状态，换行后重新跑马灯。
 - 菜单栏歌词使用 **NSStatusItem** 显示（参与系统布局，不覆盖系统图标）；宽度统一使用 `app_settings` 全局设置。
 - 菜单栏音符图标改到歌词右侧固定显示，跑马灯文字裁剪在左侧区域，不再遮挡图标。
 - 长歌词跑马灯改为单次滚动（行首→行尾→停下），换行后才重新从行首开始；状态栏宽度固定为设置值（预设 120/140/160 pt 或自定义 80–400 pt）。

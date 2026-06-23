@@ -10,12 +10,19 @@ final class MenuBarLyricsView: NSView {
 
     var text: String = "" {
         didSet {
-            guard oldValue != text else {
-                return
-            }
-            resetScroll()
             toolTip = text.isEmpty ? nil : text
             needsLayout = true
+        }
+    }
+
+    func setText(_ text: String, resetScroll: Bool) {
+        let shouldResetScroll = resetScroll || self.text != text
+        self.text = text
+        if shouldResetScroll {
+            resetScrollState()
+        } else {
+            textSize = measuredTextSize()
+            updateScrollState()
         }
     }
 
@@ -24,7 +31,7 @@ final class MenuBarLyricsView: NSView {
             guard oldValue != maxWidth else {
                 return
             }
-            resetScroll()
+            resetScrollState()
             needsLayout = true
         }
     }
@@ -34,7 +41,7 @@ final class MenuBarLyricsView: NSView {
             guard oldValue != showIcon else {
                 return
             }
-            resetScroll()
+            resetScrollState()
             needsLayout = true
         }
     }
@@ -160,7 +167,7 @@ final class MenuBarLyricsView: NSView {
         return (text as NSString).size(withAttributes: textAttributes())
     }
 
-    private func resetScroll() {
+    private func resetScrollState() {
         offsetX = 0
         startPauseRemaining = Self.startPauseTicks
         reachedEnd = false

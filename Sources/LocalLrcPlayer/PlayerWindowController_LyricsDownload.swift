@@ -115,9 +115,6 @@ extension PlayerWindowController {
     }
 
     func setLyricButtonsEnabled(_ isEnabled: Bool) {
-        layout.setNetEaseCookieButton.isEnabled = isEnabled
-        layout.resetNetEaseCookieButton.isEnabled = isEnabled
-        layout.downloadCurrentLyricButton.isEnabled = isEnabled && !tracks.isEmpty
-        layout.fillMissingLyricsButton.isEnabled = isEnabled && !tracks.isEmpty
+        settingsWindowController?.setLyricDownloadButtonsEnabled(isEnabled)
     }
 }

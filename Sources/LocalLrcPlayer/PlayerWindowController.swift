@@ -10,6 +10,7 @@ final class PlayerWindowController: NSWindowController {
     let playHistoryRepository = PlayHistoryRepository()
     let playerStateRepository = PlayerStateRepository()
     var menuBarLyricsController: MenuBarLyricsController?
+    weak var settingsWindowController: SettingsWindowController?
     var lyricCandidateDialog: LyricCandidateDialog?
 
     var tracks: [MusicTrack] = []
@@ -27,13 +28,10 @@ final class PlayerWindowController: NSWindowController {
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
+    private var windowToolbar: PlayerWindowToolbar?
 
-    private var selectedLyricProvider: LyricProvider {
-        let index = layout.lyricProviderPopup.indexOfSelectedItem
-        guard LyricProvider.allCases.indices.contains(index) else {
-            return .netEase
-        }
-        return LyricProvider.allCases[index]
+    var selectedLyricProvider: LyricProvider {
+        settingsWindowController?.selectedLyricProvider ?? .netEase
     }
 
     convenience init() {
@@ -65,8 +63,12 @@ final class PlayerWindowController: NSWindowController {
         }
 
         layout = PlayerWindowLayout(contentView: contentView)
+        if let window {
+            let toolbar = PlayerWindowToolbar(controller: self, layout: layout)
+            toolbar.install(on: window)
+            windowToolbar = toolbar
+        }
         bindActions()
-        updateCookieButtonTitle(for: selectedLyricProvider)
         layout.lyricsView.showPlaceholder("请选择歌曲")
         updateControlState()
         startTimer()
@@ -153,23 +155,9 @@ final class PlayerWindowController: NSWindowController {
     }
 
     private func bindActions() {
-        layout.chooseButton.target = self
-        layout.chooseButton.action = #selector(chooseFolder)
-        layout.refreshButton.target = self
-        layout.refreshButton.action = #selector(refreshFolder)
         layout.searchField.target = self
         layout.searchField.action = #selector(searchFieldChanged)
         layout.searchField.delegate = self
-        layout.lyricProviderPopup.target = self
-        layout.lyricProviderPopup.action = #selector(lyricProviderChanged)
-        layout.setNetEaseCookieButton.target = self
-        layout.setNetEaseCookieButton.action = #selector(setNetEaseCookie)
-        layout.resetNetEaseCookieButton.target = self
-        layout.resetNetEaseCookieButton.action = #selector(resetNetEaseCookie)
-        layout.downloadCurrentLyricButton.target = self
-        layout.downloadCurrentLyricButton.action = #selector(downloadCurrentLyric)
-        layout.fillMissingLyricsButton.target = self
-        layout.fillMissingLyricsButton.action = #selector(fillMissingLyrics)
         layout.playButton.target = self
         layout.playButton.action = #selector(togglePlayback)
         layout.previousButton.target = self
@@ -207,12 +195,6 @@ final class PlayerWindowController: NSWindowController {
         }
     }
 
-    @objc private func lyricProviderChanged() {
-        let provider = selectedLyricProvider
-        updateCookieButtonTitle(for: provider)
-        layout.statusLabel.stringValue = "Cookie 来源：\(provider.displayName)"
-    }
-
     @objc func chooseFolder() {
         let panel = NSOpenPanel()
         panel.title = "选择音乐文件夹"
@@ -225,6 +207,7 @@ final class PlayerWindowController: NSWindowController {
             do {
                 let library = try libraryRepository.registerLibrary(at: url)
                 registerAndSyncLibrary(library, restoreLastSession: false)
+                settingsWindowController?.reloadLibraries()
             } catch {
                 layout.statusLabel.stringValue = "加载目录失败：\(error.localizedDescription)"
             }
@@ -267,17 +250,15 @@ final class PlayerWindowController: NSWindowController {
         } else {
             hasLibrary = activeLibrary != nil
         }
-        layout.refreshButton.isEnabled = hasLibrary
-        layout.searchField.isEnabled = hasLibrary
+        windowToolbar?.updateEnabledState(hasLibrary: hasLibrary)
         layout.playButton.isEnabled = hasTracks
         layout.previousButton.isEnabled = hasTracks
         layout.nextButton.isEnabled = hasTracks
         layout.progressSlider.isEnabled = hasTracks
-        layout.downloadCurrentLyricButton.isEnabled = hasTracks
-        layout.fillMissingLyricsButton.isEnabled = hasTracks
+        settingsWindowController?.updateLyricDownloadButtonState(hasTracks: hasTracks)
     }
 
-    @objc private func setNetEaseCookie() {
+    @objc func setLyricCookie() {
         let provider = selectedLyricProvider
         let alert = NSAlert()
         alert.messageText = "设置\(provider.displayName) Cookie"
@@ -307,7 +288,7 @@ final class PlayerWindowController: NSWindowController {
         }
     }
 
-    @objc private func resetNetEaseCookie() {
+    @objc func resetLyricCookie() {
         let provider = selectedLyricProvider
         do {
             try lyricSearchService.resetCookie(provider: provider)
@@ -315,10 +296,6 @@ final class PlayerWindowController: NSWindowController {
         } catch {
             layout.statusLabel.stringValue = error.localizedDescription
         }
-    }
-
-    private func updateCookieButtonTitle(for provider: LyricProvider) {
-        layout.setNetEaseCookieButton.title = "设置\(provider.displayName) Cookie"
     }
 
     private func cookiePlaceholder(for provider: LyricProvider) -> String {

@@ -12,7 +12,6 @@ extension PlayerWindowController {
             layout.statusLabel.stringValue = "正在同步音乐库…"
             let summary = try trackRepository.syncAll(libraries: libraries)
             reloadMasterPlaylist(restoreLastSession: restoreLastSession, preserveTrackURL: nil)
-            updateFolderLabel(libraryCount: libraries.count)
             layout.statusLabel.stringValue = statusSummary(
                 total: summary.total,
                 missingLyrics: summary.missingLyrics,
@@ -34,7 +33,6 @@ extension PlayerWindowController {
     ) {
         do {
             activeLibrary = library
-            updateFolderLabel(libraryCount: try libraryRepository.allLibraries().count)
             layout.statusLabel.stringValue = "正在同步音乐库…"
 
             let summary = try trackRepository.sync(libraryId: library.id, folderURL: library.url)
@@ -143,7 +141,6 @@ extension PlayerWindowController {
                 try libraryRepository.markScanned(libraryId: library.id)
             }
             reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: preserveTrackURL)
-            updateFolderLabel(libraryCount: libraries.count)
             layout.statusLabel.stringValue = statusSummary(
                 total: summary.total,
                 missingLyrics: summary.missingLyrics,
@@ -157,12 +154,41 @@ extension PlayerWindowController {
         }
     }
 
-    func updateFolderLabel(libraryCount: Int) {
-        if libraryCount <= 1, let activeLibrary {
-            layout.folderLabel.stringValue = activeLibrary.path
-            return
+    func handleLibraryRemoved() {
+        do {
+            let libraries = try libraryRepository.allLibraries()
+            activeLibrary = try libraryRepository.activeLibrary()
+
+            if libraries.isEmpty {
+                tracks = []
+                trackListDataSource.tracks = []
+                currentTrackIndex = nil
+                playingTrackURL = nil
+                playbackController.stop()
+                lrcLines = []
+                layout.lyricsView.showPlaceholder("请添加音乐文件夹")
+                layout.statusLabel.stringValue = "请添加音乐文件夹（⌘, 打开设置）"
+            } else {
+                let preserveURL = playingTrackURL
+                reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: preserveURL)
+                if let preserveURL,
+                   !tracks.contains(where: { TrackListDataSource.matchesTrackURL($0.audioURL, preserveURL) }) {
+                    playbackController.stop()
+                    playingTrackURL = nil
+                    currentTrackIndex = nil
+                    lrcLines = []
+                    layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
+                }
+                if !tracks.isEmpty {
+                    layout.statusLabel.stringValue = "共 \(tracks.count) 首，双击歌曲开始播放"
+                }
+            }
+
+            updateControlState()
+            syncMenuBarLyrics()
+        } catch {
+            layout.statusLabel.stringValue = "更新播放列表失败：\(error.localizedDescription)"
         }
-        layout.folderLabel.stringValue = "\(libraryCount) 个文件夹（总播放列表）"
     }
 
     private func statusSummary(

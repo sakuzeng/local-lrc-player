@@ -58,6 +58,8 @@ final class MasterPlaylistRepositoryTests {
         try runIsolated { try self.testMultipleLibrariesAccumulateInMasterPlaylist() }
         try runIsolated { try self.testPlayerStatePersistsAcrossLibraries() }
         try runIsolated { try self.testRemovingFileUnlinksLibraryTrackAndKeepsDuplicateCopy() }
+        try runIsolated { try self.testRemovingLibraryKeepsSharedTrack() }
+        try runIsolated { try self.testRemovingLibraryClearsPlayerState() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -159,6 +161,47 @@ final class MasterPlaylistRepositoryTests {
         let masterTracks = try trackRepository.masterPlaylistTracks()
         try assertEqual(masterTracks.count, 1)
         try assertTrue(FileManager.default.fileExists(atPath: masterTracks[0].filePath), "canonical path should remain")
+    }
+
+    private func testRemovingLibraryKeepsSharedTrack() throws {
+        let libraryA = tempRoot.appendingPathComponent("KeepLib", isDirectory: true)
+        let libraryB = tempRoot.appendingPathComponent("RemoveLib", isDirectory: true)
+        try FileManager.default.createDirectory(at: libraryA, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: libraryB, withIntermediateDirectories: true)
+
+        let payload = Data("shared-remove-library".utf8)
+        try payload.write(to: libraryA.appendingPathComponent("shared.mp3"))
+        try payload.write(to: libraryB.appendingPathComponent("copy.mp3"))
+
+        let registeredA = try libraryRepository.registerLibrary(at: libraryA)
+        let registeredB = try libraryRepository.registerLibrary(at: libraryB)
+        _ = try trackRepository.sync(libraryId: registeredA.id, folderURL: libraryA)
+        _ = try trackRepository.sync(libraryId: registeredB.id, folderURL: libraryB)
+
+        try assertEqual(try trackRepository.masterPlaylistTracks().count, 1)
+        try libraryRepository.deleteLibrary(id: registeredB.id)
+        try assertEqual(try libraryRepository.allLibraries().count, 1)
+        try assertEqual(try trackRepository.masterPlaylistTracks().count, 1)
+    }
+
+    private func testRemovingLibraryClearsPlayerState() throws {
+        let library = tempRoot.appendingPathComponent("Solo", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        try Data("solo-song".utf8).write(to: library.appendingPathComponent("solo.mp3"))
+
+        let registered = try libraryRepository.registerLibrary(at: library)
+        _ = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+        let track = try trackRepository.masterPlaylistTracks().first
+        try assertTrue(track != nil, "track should exist")
+
+        let playerStateRepository = PlayerStateRepository(database: database)
+        try playerStateRepository.updatePlaybackState(trackId: track!.id, position: 8)
+        try libraryRepository.deleteLibrary(id: registered.id)
+
+        let state = try playerStateRepository.playbackState()
+        try assertEqual(state.lastTrackId, nil)
+        try assertEqual(state.lastPosition, 0)
+        try assertEqual(try trackRepository.masterPlaylistTracks().count, 0)
     }
 }
 

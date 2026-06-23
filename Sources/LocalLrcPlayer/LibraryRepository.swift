@@ -109,6 +109,41 @@ final class LibraryRepository {
         }
     }
 
+    func deleteLibrary(id: Int64) throws {
+        let wasActive = try database.read { db in
+            let sql = "SELECT is_active FROM libraries WHERE id = ? LIMIT 1;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, id)
+            guard sqlite3_step(statement) == SQLITE_ROW else {
+                return false
+            }
+            return sqlite3_column_int(statement, 0) != 0
+        }
+
+        _ = try TrackRepository(database: database).removeLibrary(libraryId: id)
+
+        if wasActive {
+            try database.write { db in
+                let selectSQL = "SELECT id FROM libraries ORDER BY id DESC LIMIT 1;"
+                let select = try database.prepare(db, sql: selectSQL)
+                defer { sqlite3_finalize(select) }
+                guard sqlite3_step(select) == SQLITE_ROW else {
+                    return
+                }
+                let nextId = sqlite3_column_int64(select, 0)
+                try database.exec(db, sql: "UPDATE libraries SET is_active = 0;")
+                let updateSQL = "UPDATE libraries SET is_active = 1 WHERE id = ?;"
+                let update = try database.prepare(db, sql: updateSQL)
+                defer { sqlite3_finalize(update) }
+                sqlite3_bind_int64(update, 1, nextId)
+                guard sqlite3_step(update) == SQLITE_DONE else {
+                    throw AppDatabaseError.stepFailed(database.errorMessage(db))
+                }
+            }
+        }
+    }
+
     func markScanned(libraryId: Int64) throws {
         let now = Date().timeIntervalSince1970
         try database.write { db in

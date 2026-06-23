@@ -1,18 +1,10 @@
 import AppKit
 
 final class PlayerWindowLayout {
-    let chooseButton = NSButton(title: "选择文件夹", target: nil, action: nil)
-    let refreshButton = NSButton(title: "刷新", target: nil, action: nil)
-    let folderLabel = NSTextField(labelWithString: "未选择音乐目录")
     let searchField = NSSearchField()
     let statusLabel = NSTextField(labelWithString: "请选择一个音乐文件夹")
     let tableView = NSTableView()
     let lyricsView = LyricsView()
-    let lyricProviderPopup = NSPopUpButton(frame: .zero, pullsDown: false)
-    let setNetEaseCookieButton = NSButton(title: "设置 Cookie", target: nil, action: nil)
-    let resetNetEaseCookieButton = NSButton(title: "重置 Cookie", target: nil, action: nil)
-    let downloadCurrentLyricButton = NSButton(title: "下载当前歌词", target: nil, action: nil)
-    let fillMissingLyricsButton = NSButton(title: "补全缺失歌词", target: nil, action: nil)
     let playButton = NSButton(title: "播放", target: nil, action: nil)
     let previousButton = NSButton(title: "上一首", target: nil, action: nil)
     let nextButton = NSButton(title: "下一首", target: nil, action: nil)
@@ -25,12 +17,6 @@ final class PlayerWindowLayout {
 
     private func setup(in contentView: NSView) {
         [
-            chooseButton,
-            refreshButton,
-            setNetEaseCookieButton,
-            resetNetEaseCookieButton,
-            downloadCurrentLyricButton,
-            fillMissingLyricsButton,
             previousButton,
             playButton,
             nextButton
@@ -39,40 +25,15 @@ final class PlayerWindowLayout {
             $0.setContentHuggingPriority(.required, for: .horizontal)
         }
 
-        lyricProviderPopup.addItems(withTitles: LyricProvider.allCases.map(\.displayName))
-        lyricProviderPopup.selectItem(at: 0)
-        lyricProviderPopup.setContentHuggingPriority(.required, for: .horizontal)
-
         searchField.placeholderString = "搜索歌曲、歌手或专辑"
         searchField.sendsSearchStringImmediately = true
         searchField.sendsWholeSearchString = true
 
-        folderLabel.lineBreakMode = .byTruncatingMiddle
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
         timeLabel.alignment = .right
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
-
-        let topBar = NSStackView(views: [chooseButton, refreshButton, folderLabel])
-        topBar.orientation = .horizontal
-        topBar.alignment = .centerY
-        topBar.spacing = 12
-
-        let cookieSourceLabel = NSTextField(labelWithString: "Cookie 来源")
-        cookieSourceLabel.textColor = .secondaryLabelColor
-
-        let lyricTools = NSStackView(views: [
-            cookieSourceLabel,
-            lyricProviderPopup,
-            setNetEaseCookieButton,
-            resetNetEaseCookieButton,
-            downloadCurrentLyricButton,
-            fillMissingLyricsButton
-        ])
-        lyricTools.orientation = .horizontal
-        lyricTools.alignment = .centerY
-        lyricTools.spacing = 10
 
         setupTrackTable()
         let tableScrollView = NSScrollView()
@@ -94,7 +55,7 @@ final class PlayerWindowLayout {
         controls.alignment = .centerY
         controls.spacing = 10
 
-        let root = NSStackView(views: [topBar, searchField, lyricTools, splitView, statusLabel, controls])
+        let root = NSStackView(views: [splitView, statusLabel, controls])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 12
@@ -107,9 +68,6 @@ final class PlayerWindowLayout {
             root.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
 
-            topBar.widthAnchor.constraint(equalTo: root.widthAnchor),
-            searchField.widthAnchor.constraint(equalTo: root.widthAnchor),
-            lyricTools.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor),
             splitView.widthAnchor.constraint(equalTo: root.widthAnchor),
             splitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),
             controls.widthAnchor.constraint(equalTo: root.widthAnchor),

@@ -247,6 +247,16 @@ reloadMasterPlaylist()
 | 某库下文件删除 | 删对应 `library_tracks`；若同 hash 其他路径仍在 → **保留** `tracks` |
 | 某 hash 所有路径消失 | DELETE `tracks` → CASCADE 清理 playlist/history/log |
 | `tracks.id` 删除 | ID 不重用；`player_state.last_track_id` 无效时 UI 回退首行 |
+| **设置中移除整个文件夹** | `TrackRepository.removeLibrary`：删该库全部 `library_tracks` → 按 hash 决定去留 `tracks` → 删 `libraries` 行；共有曲目重定向 `library_id` / 规范 `file_path`；若 `player_state.last_track_id` 被删则清空 |
+
+### 5. 用户从设置移除文件夹
+
+```text
+SettingsWindowController → LibraryRepository.deleteLibrary(id)
+  → TrackRepository.removeLibrary(libraryId)
+  → 若 was_active：将另一库标为 is_active
+  → PlayerWindowController.handleLibraryRemoved()
+```
 
 ---
 
@@ -256,7 +266,7 @@ reloadMasterPlaylist()
 ./test.sh
 ```
 
-覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新。
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、**整库移除**后共有曲目保留与 `player_state` 清理。
 
 ---
 
@@ -295,4 +305,4 @@ rm ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite
 
 - 用户自定义 `playlists`（非 system）
 - FTS5 全文搜索
-- 库管理 UI（从总列表移除某文件夹）
+- ~~库管理 UI（从总列表移除某文件夹）~~（已在设置窗口实现）

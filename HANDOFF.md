@@ -4,7 +4,7 @@
 
 ## Current State
 
-更新时间：2026-06-15
+更新时间：2026-06-23
 
 项目路径：
 
@@ -24,11 +24,13 @@
 - 选择本地音乐文件夹可**多次累积**到总播放列表；同文件内容（SHA256）自动去重。
 - SQLite schema v1：完整表结构一次性初始化（含 `app_settings`、播放列表、内容去重等）；播放进度存 `player_state`。
 - **菜单栏歌词**：`NSStatusItem` 显示当前行；短句静止、长句跑马灯；宽度读 `app_settings` 全局设置；关窗不退出，后台继续更新。
-- 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置写入 `app_settings`。
+- **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕。
+- 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
+- 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
 - 双击播放，支持播放/暂停、上一首、下一首、进度条 seek；**空格**切换播放/暂停（搜索框输入时除外）。
-- 标准 macOS 菜单栏（⌘Q 退出、⌘O 选文件夹、⌘R 刷新等），见 `AppMenuBuilder.swift`。
+- 标准 macOS 菜单栏（⌘Q 退出、⌘O 选文件夹、⌘R 刷新、⌘, 设置等），见 `AppMenuBuilder.swift`。
 - 读取同目录同名 `.lrc`，显示同步歌词，高亮当前行并平滑滚动。
 - FLAC 播放时优先使用同名 `.m4a`；没有同名 `.m4a` 时，通过 `/opt/homebrew/bin/ffmpeg` 转成 ALAC `.m4a` 缓存后播放。
 - ALAC 缓存目录：`~/Library/Caches/LocalLrcPlayer/Transcoded`。
@@ -55,6 +57,9 @@
 
 最近关键修复和设计决策：
 
+- **设置窗口**（2026-06-23）：`SettingsWindowController` 替代工具栏弹出面板；`LibraryRepository.deleteLibrary` / `TrackRepository.removeLibrary` 处理整库移除与数据库清理。
+- **播放焦点**（2026-06-23）：`userSelectedTrackIndex` 区分用户点选与程序高亮，修复顺序播放后空格误播第一首。
+- **多显示器**（2026-06-23）：设置窗口 `positionOnActiveScreen()` 跟随主播放窗口屏幕，避免 ⌘, 跑到外接主屏。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
@@ -77,28 +82,28 @@
 ```text
 Sources/LocalLrcPlayer/
   AppDatabase.swift             SQLite 连接与 schema 迁移
-  AppDatabase.swift             SQLite v1/v2 迁移
   TrackContentHasher.swift      文件 SHA256
   PlaylistRepository.swift      总播放列表
   PlayerStateRepository.swift   全局播放进度
-  LibraryRepository.swift       registerLibrary / allLibraries
-  TrackRepository.swift         sync（内容去重）、masterPlaylistTracks
-  PlayerStateRepository.swift   全局播放进度
+  LibraryRepository.swift       registerLibrary / deleteLibrary / allLibraries
+  TrackRepository.swift         sync、removeLibrary（内容去重）
   AppSettingsRepository.swift   菜单栏歌词等 UI 设置（app_settings）
+  SettingsWindowController.swift  设置窗口（⌘,）：音乐库/歌词/菜单栏
+  PlayerWindowToolbar.swift     主窗口 NSToolbar
   MenuBarLyricsController.swift 系统菜单栏歌词与快捷菜单
   MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
   LyricLogRepository.swift      歌词下载审计
   TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
   DatabaseModels.swift          数据库记录模型
-  AppDelegate.swift             应用生命周期、菜单 About/Help
+  AppDelegate.swift             应用生命周期、设置/About/Help
   AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
   main.swift                    App 启动入口
   PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
-  PlayerWindowController_Library.swift      音乐库加载与刷新
+  PlayerWindowController_Library.swift      音乐库加载、刷新、移除后重载
   PlayerWindowController_Playback.swift     播放、进度、歌词显示
   PlayerWindowController_LyricsDownload.swift  歌词下载与补全
   PlayerWindowLayout.swift      主窗口 UI 布局
-  TrackListDataSource.swift     左侧歌曲列表、正在播放行样式
+  TrackListDataSource.swift     左侧歌曲列表、正在播放行样式、userSelectedTrackIndex
   PlaybackController.swift      AVPlayer 播放封装
   PlaybackAssetResolver.swift   FLAC 播放资源解析和 ALAC 缓存生成
   LyricsView.swift              歌词显示、高亮、滚动

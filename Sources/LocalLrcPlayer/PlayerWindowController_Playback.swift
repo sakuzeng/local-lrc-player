@@ -11,7 +11,7 @@ extension PlayerWindowController {
         playingTrackURL = track.audioURL
         currentTrackIndex = index
         trackListDataSource.playingTrackURL = playingTrackURL
-        trackListDataSource.scrollToPlayingTrack()
+        trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
         layout.tableView.reloadData()
         loadLyrics(for: track)
 
@@ -48,7 +48,7 @@ extension PlayerWindowController {
         playingTrackURL = track.audioURL
         currentTrackIndex = index
         trackListDataSource.playingTrackURL = playingTrackURL
-        trackListDataSource.scrollToPlayingTrack()
+        trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
         layout.tableView.reloadData()
         let playbackURL: URL
         do {
@@ -158,16 +158,18 @@ extension PlayerWindowController {
     }
 
     @objc func togglePlayback() {
-        let selected = trackListDataSource.indexOfSelectedTrack()
-        let playing = trackListDataSource.indexOfPlayingTrack()
-
-        if let selected, selected != playing {
-            playTrack(at: selected)
+        let playing = currentTrackIndex ?? trackListDataSource.indexOfPlayingTrack()
+        if let userSelected = trackListDataSource.userSelectedTrackIndex,
+           let playing,
+           userSelected != playing {
+            playTrack(at: userSelected)
             return
         }
 
         guard let playing, tracks.indices.contains(playing) else {
-            if let selected {
+            if let userSelected = trackListDataSource.userSelectedTrackIndex {
+                playTrack(at: userSelected)
+            } else if let selected = trackListDataSource.indexOfSelectedTrack() {
                 playTrack(at: selected)
             } else if !tracks.isEmpty {
                 playTrack(at: 0)

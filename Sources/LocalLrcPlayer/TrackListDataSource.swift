@@ -14,11 +14,14 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
     }
 
     private(set) var selectedTrackURL: URL?
+    /// 用户主动点选的行；程序同步播放行时不设置，用于空格/菜单栏区分「暂停当前」与「切到选中曲」。
+    private(set) var userSelectedTrackIndex: Int?
 
     var onDoubleClick: ((Int) -> Void)?
     var onSelectionChanged: ((Int?) -> Void)?
 
     private weak var tableView: NSTableView?
+    private var suppressSelectionCallback = false
 
     static func matchesTrackURL(_ lhs: URL, _ rhs: URL) -> Bool {
         lhs.standardizedFileURL.path == rhs.standardizedFileURL.path
@@ -54,12 +57,19 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         return tracks.firstIndex { Self.matchesTrackURL($0.audioURL, selectedTrackURL) }
     }
 
-    func selectRow(_ row: Int, scrollToVisible: Bool = true) {
+    func selectRow(_ row: Int, scrollToVisible: Bool = true, isUserInitiated: Bool = false) {
         guard tracks.indices.contains(row), let tableView else {
             return
         }
+        suppressSelectionCallback = true
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        suppressSelectionCallback = false
         selectedTrackURL = tracks[row].audioURL
+        if isUserInitiated {
+            userSelectedTrackIndex = row
+        } else {
+            userSelectedTrackIndex = nil
+        }
         if scrollToVisible {
             scrollRowToVisible(row)
         }
@@ -211,6 +221,9 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        if !suppressSelectionCallback {
+            userSelectedTrackIndex = selectedTrackIndex()
+        }
         if let row = selectedTrackIndex() {
             selectedTrackURL = tracks[row].audioURL
         }
@@ -223,6 +236,7 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         guard let row = tableView?.clickedRow, tracks.indices.contains(row) else {
             return
         }
+        userSelectedTrackIndex = row
         onDoubleClick?(row)
     }
 }

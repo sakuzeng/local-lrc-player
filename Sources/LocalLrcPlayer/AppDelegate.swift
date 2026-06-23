@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var playerWindowController: PlayerWindowController?
     private var menuBarLyricsController: MenuBarLyricsController?
+    private var settingsWindowController: SettingsWindowController?
 
     override init() {
         super.init()
@@ -17,6 +18,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menuBarLyrics = MenuBarLyricsController(playerWindowController: controller)
         menuBarLyricsController = menuBarLyrics
         controller.menuBarLyricsController = menuBarLyrics
+
+        let settings = SettingsWindowController(
+            playerWindowController: controller,
+            menuBarLyricsController: menuBarLyrics
+        )
+        settingsWindowController = settings
+        controller.settingsWindowController = settings
+
         AppMenuBuilder.installMainMenu(
             playerWindowController: controller,
             menuBarLyricsController: menuBarLyrics
@@ -42,6 +51,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playerWindowController?.saveSession()
     }
 
+    @objc func showSettings() {
+        settingsWindowController?.showSettings()
+    }
+
     @objc func showAboutPanel() {
         NSApp.orderFrontStandardAboutPanel(nil)
     }
@@ -52,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.informativeText = """
         快捷键：
         ⌘O  选择文件夹
+        ⌘,  设置
         ⌘R  刷新全部已注册文件夹
         ⌘W  关闭窗口
         ⌘Q  退出

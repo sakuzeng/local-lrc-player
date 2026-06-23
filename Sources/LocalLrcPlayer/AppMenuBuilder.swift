@@ -24,6 +24,13 @@ enum AppMenuBuilder {
         appMenu.addItem(withTitle: "关于 Local LRC Player", action: #selector(AppDelegate.showAboutPanel), keyEquivalent: "")
         appMenu.item(at: 0)?.target = AppDelegate.shared
         appMenu.addItem(.separator())
+        appMenu.addItem(menuItem(
+            title: "设置…",
+            action: #selector(AppDelegate.showSettings),
+            keyEquivalent: ",",
+            target: AppDelegate.shared
+        ))
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "隐藏 Local LRC Player", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
 
         let hideOthers = NSMenuItem(

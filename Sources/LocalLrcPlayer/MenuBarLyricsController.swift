@@ -95,6 +95,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     private let lyricsView = MenuBarLyricsView()
     private var currentSettings = AppSettings.defaults
     private var lastDisplayedText = ""
+    private var lastActiveLineIndex: Int?
 
     init(
         playerWindowController: PlayerWindowController,
@@ -137,7 +138,10 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             return
         }
 
-        setDisplayText(lines[index].text)
+        let lineText = lines[index].text
+        let isNewLine = lastActiveLineIndex != index
+        lastActiveLineIndex = index
+        setDisplayText(lineText, resetScroll: isNewLine)
     }
 
     func showPlaceholder(_ text: String) {
@@ -145,7 +149,8 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             return
         }
         lyricsView.isScrollingEnabled = false
-        setDisplayText(text)
+        lastActiveLineIndex = nil
+        setDisplayText(text, resetScroll: true)
     }
 
     func setTrackTitle(_ title: String) {
@@ -153,7 +158,8 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             return
         }
         lyricsView.isScrollingEnabled = false
-        setDisplayText("♪ \(title)")
+        lastActiveLineIndex = nil
+        setDisplayText("♪ \(title)", resetScroll: true)
     }
 
     func currentSettingsSnapshot() -> AppSettings {
@@ -264,9 +270,9 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
 
         applyLayout()
         if lastDisplayedText.isEmpty {
-            setDisplayText("Local LRC Player")
+            setDisplayText("Local LRC Player", resetScroll: true)
         } else {
-            setDisplayText(lastDisplayedText)
+            setDisplayText(lastDisplayedText, resetScroll: true)
         }
     }
 
@@ -340,9 +346,9 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         lyricsView.needsLayout = true
     }
 
-    private func setDisplayText(_ text: String) {
+    private func setDisplayText(_ text: String, resetScroll: Bool) {
         lastDisplayedText = text
-        lyricsView.text = text
+        lyricsView.setText(text, resetScroll: resetScroll)
         applyLayout()
     }
 
