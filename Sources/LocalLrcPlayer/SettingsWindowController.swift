@@ -24,6 +24,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let menuBarCustomWidthButton = NSButton(title: "自定义宽度…", target: nil, action: nil)
     private let menuBarShowIconButton = NSButton(checkboxWithTitle: "显示音符图标", target: nil, action: nil)
 
+    private var contentScrollView: NSScrollView?
+
     var selectedLyricProvider: LyricProvider {
         let index = lyricProviderPopup.indexOfSelectedItem
         guard LyricProvider.allCases.indices.contains(index) else {
@@ -68,6 +70,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSApp.activate(ignoringOtherApps: true)
         reloadLibraries()
         refreshMenuBarControls()
+        scrollContentToTop()
     }
 
     /// 将设置窗口居中到主窗口所在屏幕；无主窗口时退回到鼠标或 key 窗口所在屏幕。
@@ -98,6 +101,22 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         frame.origin.x = visibleFrame.origin.x + (visibleFrame.width - frame.width) / 2
         frame.origin.y = visibleFrame.origin.y + (visibleFrame.height - frame.height) / 2
         settingsWindow.setFrame(frame, display: false)
+    }
+
+    private func scrollContentToTop() {
+        guard let scrollView = contentScrollView else {
+            return
+        }
+
+        let scrollToTop = {
+            scrollView.documentView?.layoutSubtreeIfNeeded()
+            scrollView.contentView.scroll(to: .zero)
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+        }
+
+        scrollToTop()
+        // 首次打开时布局可能尚未完成，下一帧再滚一次确保停在顶部。
+        DispatchQueue.main.async(execute: scrollToTop)
     }
 
     func reloadLibraries() {
@@ -222,12 +241,17 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         root.spacing = 24
         root.translatesAutoresizingMaskIntoConstraints = false
 
+        let documentView = SettingsFlippedDocumentView()
+        documentView.translatesAutoresizingMaskIntoConstraints = false
+        documentView.addSubview(root)
+
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
-        scrollView.documentView = root
+        scrollView.documentView = documentView
+        contentScrollView = scrollView
 
         contentView.addSubview(scrollView)
         NSLayoutConstraint.activate([
@@ -236,6 +260,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             scrollView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
             scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
 
+            root.leadingAnchor.constraint(equalTo: documentView.leadingAnchor),
+            root.trailingAnchor.constraint(equalTo: documentView.trailingAnchor),
+            root.topAnchor.constraint(equalTo: documentView.topAnchor),
+            root.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             root.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             librarySection.widthAnchor.constraint(equalTo: root.widthAnchor),
             lyricsSection.widthAnchor.constraint(equalTo: root.widthAnchor),
@@ -558,4 +586,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     func tableViewSelectionDidChange(_ notification: Notification) {
         updateLibraryButtons()
     }
+}
+
+private final class SettingsFlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }
