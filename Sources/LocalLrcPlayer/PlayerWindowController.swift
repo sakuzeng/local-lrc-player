@@ -30,6 +30,7 @@ final class PlayerWindowController: NSWindowController {
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
     private var windowToolbar: PlayerWindowToolbar?
+    private var windowFrameSaveTimer: Timer?
 
     var selectedLyricProvider: LyricProvider {
         settingsWindowController?.selectedLyricProvider ?? .netEase
@@ -51,6 +52,7 @@ final class PlayerWindowController: NSWindowController {
 
     deinit {
         progressTimer?.invalidate()
+        windowFrameSaveTimer?.invalidate()
         if let mouseDownMonitor {
             NSEvent.removeMonitor(mouseDownMonitor)
         }
@@ -84,6 +86,8 @@ final class PlayerWindowController: NSWindowController {
         }
 
         window?.initialFirstResponder = layout.tableView
+        window?.delegate = self
+        restoreWindowFrame()
         DispatchQueue.main.async { [weak self] in
             self?.resignSearchFieldFocus()
         }
@@ -253,6 +257,11 @@ final class PlayerWindowController: NSWindowController {
         } else {
             hasLibrary = activeLibrary != nil
         }
+        layout.refreshEmptyStates(
+            hasLibraries: hasLibrary,
+            trackCount: tracks.count,
+            searchKeyword: searchKeyword
+        )
         windowToolbar?.updateEnabledState(hasLibrary: hasLibrary)
         layout.playButton.isEnabled = hasTracks
         layout.previousButton.isEnabled = hasTracks
@@ -312,6 +321,69 @@ final class PlayerWindowController: NSWindowController {
 
     func saveSession() {
         saveCurrentPlaybackState()
+        saveWindowFrame()
+    }
+
+    private func restoreWindowFrame() {
+        guard let window else {
+            return
+        }
+
+        if let saved = try? playerStateRepository.windowFrame() {
+            window.setFrame(Self.clampedFrame(saved.rect, for: window), display: false)
+        } else {
+            window.center()
+        }
+    }
+
+    private func saveWindowFrame() {
+        guard let window else {
+            return
+        }
+        try? playerStateRepository.updateWindowFrame(window.frame)
+    }
+
+    private func scheduleWindowFrameSave() {
+        windowFrameSaveTimer?.invalidate()
+        windowFrameSaveTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+            self?.saveWindowFrame()
+        }
+    }
+
+    private static func clampedFrame(_ frame: NSRect, for window: NSWindow) -> NSRect {
+        var frame = frame
+        let minSize = window.minSize
+        if frame.width < minSize.width {
+            frame.size.width = minSize.width
+        }
+        if frame.height < minSize.height {
+            frame.size.height = minSize.height
+        }
+
+        let targetScreen = NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
+        guard let visible = targetScreen?.visibleFrame else {
+            return frame
+        }
+
+        if frame.width > visible.width {
+            frame.size.width = visible.width
+        }
+        if frame.height > visible.height {
+            frame.size.height = visible.height
+        }
+        if frame.maxX > visible.maxX {
+            frame.origin.x = visible.maxX - frame.width
+        }
+        if frame.minX < visible.minX {
+            frame.origin.x = visible.minX
+        }
+        if frame.maxY > visible.maxY {
+            frame.origin.y = visible.maxY - frame.height
+        }
+        if frame.minY < visible.minY {
+            frame.origin.y = visible.minY
+        }
+        return frame
     }
 
     @objc func chooseFolderFromMenu() {
@@ -353,5 +425,20 @@ extension PlayerWindowController: NSSearchFieldDelegate {
         sender.stringValue = ""
         searchKeyword = ""
         reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: playingTrackURL)
+    }
+}
+
+extension PlayerWindowController: NSWindowDelegate {
+    func windowDidMove(_ notification: Notification) {
+        scheduleWindowFrameSave()
+    }
+
+    func windowDidResize(_ notification: Notification) {
+        scheduleWindowFrameSave()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        saveWindowFrame()
+        saveCurrentPlaybackState()
     }
 }

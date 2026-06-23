@@ -5,6 +5,7 @@ extension PlayerWindowController {
         do {
             let libraries = try libraryRepository.allLibraries()
             guard !libraries.isEmpty else {
+                updateControlState()
                 return
             }
 

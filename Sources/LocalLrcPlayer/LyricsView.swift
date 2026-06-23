@@ -19,6 +19,7 @@ final class LyricsView: NSScrollView {
     }
 
     private let textView = NSTextView()
+    private let emptyStateView = EmptyStateView()
     private var lines: [LrcLine] = []
     private var lineRanges: [NSRange] = []
     private var activeLineIndex: Int?
@@ -47,15 +48,11 @@ final class LyricsView: NSScrollView {
         activeLineIndex = nil
         applyScrollPadding(repositionActiveLine: false)
 
-        let paragraphStyle = makeParagraphStyle()
-        textView.textStorage?.setAttributedString(NSAttributedString(
-            string: text,
-            attributes: [
-                .font: NSFont.systemFont(ofSize: 18, weight: .regular),
-                .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: paragraphStyle
-            ]
-        ))
+        let content = Self.placeholderContent(for: text)
+        emptyStateView.configure(symbolName: content.symbol, title: text, subtitle: content.subtitle)
+        emptyStateView.isHidden = false
+        hasVerticalScroller = false
+        textView.textStorage?.setAttributedString(NSAttributedString(string: ""))
     }
 
     func render(_ lines: [LrcLine], scrollToTop: Bool = true) {
@@ -63,6 +60,8 @@ final class LyricsView: NSScrollView {
         self.lines = lines
         lineRanges = []
         activeLineIndex = nil
+        emptyStateView.isHidden = true
+        hasVerticalScroller = true
         applyScrollPadding(repositionActiveLine: false)
 
         let text = NSMutableString()
@@ -152,11 +151,45 @@ final class LyricsView: NSScrollView {
         borderType = .noBorder
         drawsBackground = false
         backgroundColor = .clear
+
+        emptyStateView.isHidden = true
+        addSubview(emptyStateView)
+        emptyStateView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            emptyStateView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            emptyStateView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            emptyStateView.topAnchor.constraint(equalTo: topAnchor),
+            emptyStateView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
     }
 
     override func layout() {
         super.layout()
         applyScrollPadding(repositionActiveLine: true)
+        emptyStateView.frame = bounds
+    }
+
+    private static func placeholderContent(for text: String) -> (symbol: String, subtitle: String?) {
+        switch text {
+        case "请选择歌曲":
+            return ("text.quote", nil)
+        case "双击左侧歌曲开始播放":
+            return ("music.note", "从列表选择一首开始")
+        case "请添加音乐文件夹":
+            return ("folder.badge.plus", "⌘, 打开设置")
+        case "未找到音乐文件":
+            return ("music.note.list", nil)
+        case "未找到同名 LRC 歌词":
+            return ("doc.text", "可尝试在设置中下载歌词")
+        case "歌词读取失败":
+            return ("exclamationmark.triangle", nil)
+        case "歌词文件为空或格式无法识别":
+            return ("doc.text", nil)
+        case "读取目录失败":
+            return ("exclamationmark.triangle", nil)
+        default:
+            return ("text.quote", nil)
+        }
     }
 
     var onMouseDown: (() -> Void)?

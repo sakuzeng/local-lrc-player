@@ -30,6 +30,8 @@
 - 底部**图标化播放控制**与自定义进度条（`PlayerWindowLayout` / `SeekSlider`）。
 - **歌词区**：距离渐变淡出、当前行主题色高亮与换行动画；动态上下留白使首尾行可居中显示（`LyricsView`）。
 - **曲目列表**：双行单元格（歌名 + 歌手/专辑）；`歌手 - 歌名` 解析；`TrackTableView` 集中管理悬停；播放行主题色浅底（`TrackListDataSource`）。
+- **空状态**：列表/歌词无内容时 SF Symbol 占位（`UIChrome` / `EmptyStateView`）；主窗口仍为平铺毛玻璃布局。
+- 启动时恢复上次主窗口位置与大小（`player_state.window_*`）；无记录时居中显示。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -69,6 +71,7 @@
 - **播放区 UI + seek**（2026-06-23）：SF Symbol 播放控制、自定义 `SeekSlider`；修复拖动/启动时歌词不同步、未播放时拖动无效、圆点与轨道对齐等问题（`PlayerWindowController_Playback`、`LyricsView.updateWhenReady`、`completeSliderSeek`）。
 - **歌词区美化**（2026-06-23）：`LyricsView` 按行距渐变字号/透明度、换行平滑过渡；`textContainerInset` 动态半屏留白修复末行高亮贴底；未使用边缘毛玻璃遮罩。
 - **曲目列表**（2026-06-23）：`TrackTableCellView` 双行布局；`歌手 - 歌名` 拆分；悬停由 `TrackTableView` + `TrackListDataSource.hoveredRow` 统一管理，修复滚动时灰底残影。
+- **空状态 + 窗口**（2026-06-23）：`EmptyStateView` 图标占位；主窗口保持平铺毛玻璃（卡片/侧栏方案已回退）；`player_state` v2 记忆主窗口 frame。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。

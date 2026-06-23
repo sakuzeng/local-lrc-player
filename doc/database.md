@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 1`（当前完整结构见 `AppDatabase.schemaV1`） |
+| Schema 版本 | `PRAGMA user_version = 2`（v1 基线 + v2 为 `player_state` 窗口列） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -93,6 +93,10 @@ erDiagram
         INTEGER id PK
         INTEGER last_track_id
         REAL last_position
+        REAL window_origin_x
+        REAL window_origin_y
+        REAL window_width
+        REAL window_height
     }
 ```
 
@@ -165,13 +169,17 @@ erDiagram
 
 ---
 
-### `player_state` — 全局播放进度
+### `player_state` — 全局播放进度与主窗口
 
 | 列 | 类型 | 说明 |
 |---|---|---|
 | `id` | INTEGER | 固定为 `1`（CHECK 约束） |
 | `last_track_id` | INTEGER | 上次选中/播放的 `tracks.id` |
 | `last_position` | REAL | 上次进度（秒） |
+| `window_origin_x` | REAL | 主窗口 frame 原点 x（v2；NULL = 未保存，启动时居中） |
+| `window_origin_y` | REAL | 主窗口 frame 原点 y |
+| `window_width` | REAL | 主窗口宽度 |
+| `window_height` | REAL | 主窗口高度 |
 
 ---
 
@@ -201,7 +209,7 @@ DatabaseModels.swift        LibraryRecord / TrackRecord
 LibraryRepository.swift     registerLibrary、allLibraries
 TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
 PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
-PlayerStateRepository.swift player_state 读写
+PlayerStateRepository.swift player_state 读写（含主窗口 frame）
 AppSettingsRepository.swift app_settings 读写（菜单栏歌词设置）
 PlayHistoryRepository.swift play_history INSERT
 LyricLogRepository.swift    lyric_download_log INSERT

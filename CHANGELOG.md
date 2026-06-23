@@ -11,6 +11,7 @@
 - 主窗口 **NSToolbar**（`PlayerWindowToolbar`）：选择文件夹、刷新、搜索；主内容区仅保留列表、歌词与播放控制。
 - 主窗口**窗口质感**：`fullSizeContentView` + 透明标题栏 + `toolbarStyle = .unified`；全窗口 `NSVisualEffectView`（`.underWindowBackground`）毛玻璃背景。
 - 数据库测试：`testRemovingLibraryKeepsSharedTrack`、`testRemovingLibraryClearsPlayerState`。
+- 数据库 schema **v2**：`player_state` 增加主窗口位置/大小列（v1 库自动迁移）。
 
 ### Changed
 
@@ -22,6 +23,8 @@
 - 进度条 seek 与歌词预览逻辑重构：`commitProgressSeek` 结算等待播放器落点、`resolvedPlaybackDuration` 在未播放时回退 ID3/文件时长；启动恢复与点播放前拖动进度条均即时定位歌词（`LyricsView.updateWhenReady`）。
 - **歌词区美化**（`LyricsView`）：非当前行按与当前行距离渐变字号/透明度；当前行 22pt 主题色加粗，换行时约 0.28s 颜色与字号平滑过渡；上下动态留白（约半屏）使首尾歌词也能滚到视口正中。
 - **曲目列表双行展示**（`TrackTableCellView` / `TrackTableView`）：歌名主标题 + 歌手/专辑次标题（48pt 行高）；优先解析「歌手 - 歌名」文件名或合并标题，ID3 分字段时直接用标签；播放行主题色浅底与加粗歌名（无喇叭图标）。
+- **空状态占位**（`EmptyStateView` / `UIChrome`）：列表与歌词区无内容时显示 SF Symbol + 标题/副标题；主窗口布局保持平铺毛玻璃（未采用卡片分组）。
+- **主窗口位置记忆**：`player_state` 表 v2 增加 `window_*` 四列；启动恢复上次 frame，无记录时居中；拖动/缩放与关窗时写入。
 
 ### Fixed
 

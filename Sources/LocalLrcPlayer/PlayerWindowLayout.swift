@@ -11,6 +11,10 @@ final class PlayerWindowLayout {
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
 
+    private let trackListEmptyState = EmptyStateView()
+    private let listContainer = NSView()
+    private let tableScrollView = NSScrollView()
+
     init(contentView: NSView) {
         setup(in: contentView)
     }
@@ -30,6 +34,38 @@ final class PlayerWindowLayout {
         ])
     }
 
+    func refreshEmptyStates(hasLibraries: Bool, trackCount: Int, searchKeyword: String) {
+        if !hasLibraries {
+            trackListEmptyState.configure(
+                symbolName: "folder.badge.plus",
+                title: "请添加音乐文件夹",
+                subtitle: "⌘, 打开设置"
+            )
+            trackListEmptyState.isHidden = false
+            return
+        }
+
+        if trackCount == 0 {
+            if searchKeyword.isEmpty {
+                trackListEmptyState.configure(
+                    symbolName: "music.note.list",
+                    title: "未找到音乐文件",
+                    subtitle: "支持 MP3、FLAC、M4A 等常见格式"
+                )
+            } else {
+                trackListEmptyState.configure(
+                    symbolName: "magnifyingglass",
+                    title: "无匹配结果",
+                    subtitle: "试试其他关键词"
+                )
+            }
+            trackListEmptyState.isHidden = false
+            return
+        }
+
+        trackListEmptyState.isHidden = true
+    }
+
     private func setup(in contentView: NSView) {
         configureTransportButtons()
 
@@ -39,21 +75,22 @@ final class PlayerWindowLayout {
 
         statusLabel.textColor = .secondaryLabelColor
         statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.font = .systemFont(ofSize: 12)
         timeLabel.alignment = .right
         timeLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
 
         setupTrackTable()
-        let tableScrollView = makeBorderlessScrollView(documentView: tableView)
+        configureListContainer()
 
         let splitView = NSSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
-        splitView.addArrangedSubview(tableScrollView)
+        splitView.addArrangedSubview(listContainer)
         splitView.addArrangedSubview(lyricsView)
 
-        tableScrollView.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
-        tableScrollView.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
+        listContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
+        listContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
 
         let controls = NSStackView(views: [previousButton, playButton, nextButton, progressSlider, timeLabel])
         controls.orientation = .horizontal
@@ -91,13 +128,29 @@ final class PlayerWindowLayout {
         ])
     }
 
-    private func makeBorderlessScrollView(documentView: NSView) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.documentView = documentView
-        scrollView.hasVerticalScroller = true
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-        return scrollView
+    private func configureListContainer() {
+        listContainer.translatesAutoresizingMaskIntoConstraints = false
+        tableScrollView.documentView = tableView
+        tableScrollView.hasVerticalScroller = true
+        tableScrollView.drawsBackground = false
+        tableScrollView.borderType = .noBorder
+        tableScrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        trackListEmptyState.isHidden = true
+        listContainer.addSubview(tableScrollView)
+        listContainer.addSubview(trackListEmptyState)
+
+        NSLayoutConstraint.activate([
+            tableScrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            tableScrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            tableScrollView.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            tableScrollView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor),
+
+            trackListEmptyState.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            trackListEmptyState.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            trackListEmptyState.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            trackListEmptyState.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor)
+        ])
     }
 
     private func setupTrackTable() {
@@ -151,8 +204,6 @@ final class PlayerWindowLayout {
         pointSize: CGFloat,
         weight: NSFont.Weight = .regular
     ) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
-        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
+        UIChrome.symbolImage(name, pointSize: pointSize, weight: weight)
     }
 }

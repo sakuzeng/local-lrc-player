@@ -21,7 +21,7 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     static let shared: AppDatabase = {
         do {
@@ -104,13 +104,29 @@ final class AppDatabase {
         try write { db in
             try exec(db, sql: "PRAGMA foreign_keys = ON;")
 
-            let schemaVersion = try currentSchemaVersion(db)
-            guard schemaVersion < Self.currentSchemaVersion else {
-                return
+            if try currentSchemaVersion(db) < 1 {
+                try exec(db, sql: Self.schemaV1)
+            }
+            if try currentSchemaVersion(db) < 2 {
+                try Self.applyMigrationV2(db, database: self)
             }
 
-            try exec(db, sql: Self.schemaV1)
-            try exec(db, sql: "PRAGMA user_version = \(Self.currentSchemaVersion);")
+            let version = try currentSchemaVersion(db)
+            if version < Self.currentSchemaVersion {
+                try exec(db, sql: "PRAGMA user_version = \(Self.currentSchemaVersion);")
+            }
+        }
+    }
+
+    private static func applyMigrationV2(_ db: OpaquePointer, database: AppDatabase) throws {
+        let statements = [
+            "ALTER TABLE player_state ADD COLUMN window_origin_x REAL;",
+            "ALTER TABLE player_state ADD COLUMN window_origin_y REAL;",
+            "ALTER TABLE player_state ADD COLUMN window_width REAL;",
+            "ALTER TABLE player_state ADD COLUMN window_height REAL;"
+        ]
+        for sql in statements {
+            try database.exec(db, sql: sql)
         }
     }
 
