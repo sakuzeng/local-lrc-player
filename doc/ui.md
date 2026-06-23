@@ -90,7 +90,7 @@
 ## 播放模式（播放区）
 
 - 按钮：`playbackModeButton`，循环切换 顺序 → 单曲循环 → 随机。
-- 图标：`arrow.right.to.line` / `repeat.1` / `shuffle`；非顺序模式用主题色高亮。
+- 图标：`arrow.right.to.line` / `repeat.1` / `shuffle`；当前模式统一用主题色高亮。
 - 持久化：`player_state.playback_mode`（schema v3）。
 - **顺序播放**：列表播完后**从第一首继续**（非停止）；单曲循环重播当前曲；随机维护 `shuffleHistory` 支持上一首回退。
 

@@ -258,7 +258,7 @@ final class PlayerWindowLayout {
     func setPlaybackMode(_ mode: PlaybackMode) {
         playbackModeButton.image = Self.symbolImage(mode.symbolName, pointSize: 14, weight: .semibold)
         playbackModeButton.toolTip = mode.title
-        playbackModeButton.contentTintColor = mode == .sequential ? .secondaryLabelColor : .controlAccentColor
+        playbackModeButton.contentTintColor = .controlAccentColor
     }
 
     private static func symbolImage(
