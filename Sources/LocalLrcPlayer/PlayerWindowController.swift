@@ -43,6 +43,7 @@ final class PlayerWindowController: NSWindowController {
         )
         window.title = "Local LRC Player"
         window.minSize = NSSize(width: 780, height: 520)
+        Self.configureWindowChrome(window)
         self.init(window: window)
         setup()
     }
@@ -62,6 +63,7 @@ final class PlayerWindowController: NSWindowController {
             return
         }
 
+        PlayerWindowLayout.installBackground(in: contentView)
         layout = PlayerWindowLayout(contentView: contentView)
         if let window {
             let toolbar = PlayerWindowToolbar(controller: self, layout: layout)
@@ -329,6 +331,16 @@ final class PlayerWindowController: NSWindowController {
 
     @objc func playNextFromMenu() {
         playNext()
+    }
+
+    private static func configureWindowChrome(_ window: NSWindow) {
+        window.styleMask.insert(.fullSizeContentView)
+        window.titlebarAppearsTransparent = true
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .clear
+        if #available(macOS 11.0, *) {
+            window.toolbarStyle = .unified
+        }
     }
 }
 

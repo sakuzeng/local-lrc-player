@@ -26,6 +26,7 @@
 - **菜单栏歌词**：`NSStatusItem` 显示当前行；短句静止、长句跑马灯；宽度读 `app_settings` 全局设置；关窗不退出，后台继续更新。
 - **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕，并滚回顶部显示「音乐库」。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
+- 主窗口**毛玻璃质感**：透明标题栏 + unified 工具栏 + `NSVisualEffectView` 背景；列表/歌词无边框。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -61,6 +62,7 @@
 - **播放焦点**（2026-06-23）：`userSelectedTrackIndex` 区分用户点选与程序高亮，修复顺序播放后空格误播第一首。
 - **多显示器**（2026-06-23）：设置窗口 `positionOnActiveScreen()` 跟随主播放窗口屏幕，避免 ⌘, 跑到外接主屏。
 - **设置滚动**（2026-06-23）：翻转文档坐标 + `scrollContentToTop()`，首次 ⌘, 不再默认停在「歌词」区块。
+- **窗口质感**（2026-06-23）：`fullSizeContentView`、unified 工具栏、毛玻璃背景；内容区对齐 safe area。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。

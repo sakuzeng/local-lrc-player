@@ -89,8 +89,8 @@ final class LyricsView: NSScrollView {
     private func setup() {
         textView.isEditable = false
         textView.isSelectable = true
-        textView.drawsBackground = true
-        textView.backgroundColor = .textBackgroundColor
+        textView.drawsBackground = false
+        textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: 28, height: 28)
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
@@ -102,9 +102,9 @@ final class LyricsView: NSScrollView {
 
         documentView = textView
         hasVerticalScroller = true
-        borderType = .lineBorder
-        drawsBackground = true
-        backgroundColor = .textBackgroundColor
+        borderType = .noBorder
+        drawsBackground = false
+        backgroundColor = .clear
     }
 
     var onMouseDown: (() -> Void)?

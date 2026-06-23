@@ -9,6 +9,7 @@
 - **设置窗口**（`SettingsWindowController`）：应用菜单 **设置…** 或 **⌘,** 打开；收纳音乐库管理、歌词 Cookie/下载、菜单栏歌词配置。
 - 设置中可**移除已注册音乐文件夹**（不删除磁盘文件）；`LibraryRepository.deleteLibrary` + `TrackRepository.removeLibrary` 清理 `library_tracks`、孤儿 `tracks`、`playlist_tracks`，并在需要时重定向 `tracks.library_id` / 规范路径。
 - 主窗口 **NSToolbar**（`PlayerWindowToolbar`）：选择文件夹、刷新、搜索；主内容区仅保留列表、歌词与播放控制。
+- 主窗口**窗口质感**：`fullSizeContentView` + 透明标题栏 + `toolbarStyle = .unified`；全窗口 `NSVisualEffectView`（`.underWindowBackground`）毛玻璃背景。
 - 数据库测试：`testRemovingLibraryKeepsSharedTrack`、`testRemovingLibraryClearsPlayerState`。
 
 ### Changed
@@ -16,6 +17,7 @@
 - Cookie 来源、设置/重置 Cookie、下载当前歌词、补全缺失歌词从工具栏弹出面板移至设置窗口。
 - 设置界面采用分组卡片 + 表单行布局（音乐库 / 歌词 / 菜单栏歌词三块统一风格）。
 - 移除主窗口 `lyricToolsPanel` 及工具栏「⋯」歌词工具按钮。
+- 主窗口列表与歌词区去掉硬边框，内容对齐 `safeAreaLayoutGuide`；列表 / 歌词视图背景透明，靠 `NSSplitView` 细分割线与毛玻璃区分区域。
 
 ### Fixed
 

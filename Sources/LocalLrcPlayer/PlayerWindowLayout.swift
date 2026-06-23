@@ -15,6 +15,21 @@ final class PlayerWindowLayout {
         setup(in: contentView)
     }
 
+    static func installBackground(in contentView: NSView) {
+        let effect = NSVisualEffectView()
+        effect.material = .underWindowBackground
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(effect)
+        NSLayoutConstraint.activate([
+            effect.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            effect.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            effect.topAnchor.constraint(equalTo: contentView.topAnchor),
+            effect.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+        ])
+    }
+
     private func setup(in contentView: NSView) {
         [
             previousButton,
@@ -36,10 +51,7 @@ final class PlayerWindowLayout {
         timeLabel.setContentHuggingPriority(.required, for: .horizontal)
 
         setupTrackTable()
-        let tableScrollView = NSScrollView()
-        tableScrollView.documentView = tableView
-        tableScrollView.hasVerticalScroller = true
-        tableScrollView.borderType = .lineBorder
+        let tableScrollView = makeBorderlessScrollView(documentView: tableView)
 
         let splitView = NSSplitView()
         splitView.isVertical = true
@@ -62,10 +74,11 @@ final class PlayerWindowLayout {
         root.translatesAutoresizingMaskIntoConstraints = false
 
         contentView.addSubview(root)
+        let layoutGuide = contentView.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
-            root.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            root.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            root.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 16),
+            root.leadingAnchor.constraint(equalTo: layoutGuide.leadingAnchor, constant: 16),
+            root.trailingAnchor.constraint(equalTo: layoutGuide.trailingAnchor, constant: -16),
+            root.topAnchor.constraint(equalTo: layoutGuide.topAnchor, constant: 8),
             root.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -16),
 
             splitView.widthAnchor.constraint(equalTo: root.widthAnchor),
@@ -73,6 +86,15 @@ final class PlayerWindowLayout {
             controls.widthAnchor.constraint(equalTo: root.widthAnchor),
             statusLabel.widthAnchor.constraint(equalTo: root.widthAnchor)
         ])
+    }
+
+    private func makeBorderlessScrollView(documentView: NSView) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.documentView = documentView
+        scrollView.hasVerticalScroller = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        return scrollView
     }
 
     private func setupTrackTable() {
@@ -84,5 +106,6 @@ final class PlayerWindowLayout {
         tableView.rowHeight = 34
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.allowsEmptySelection = true
+        tableView.backgroundColor = .clear
     }
 }
