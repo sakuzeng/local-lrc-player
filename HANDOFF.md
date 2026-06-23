@@ -32,6 +32,8 @@
 - **曲目列表**：双行单元格（歌名 + 歌手/专辑）；`歌手 - 歌名` 解析；`TrackTableView` 集中管理悬停；播放行主题色浅底（`TrackListDataSource`）。
 - **空状态**：列表/歌词无内容时 SF Symbol 占位（`UIChrome` / `EmptyStateView`）；主窗口仍为平铺毛玻璃布局。
 - 启动时恢复上次主窗口位置与大小（`player_state.window_*`）；无记录时居中显示。
+- **播放模式**：顺序 / 单曲循环 / 随机；播放区按钮循环切换，偏好存 `player_state.playback_mode`（schema v3）；随机模式用 `shuffleHistory` 支持上一首回退；顺序模式末首回第一首。
+- **列表顶栏**：`歌曲 · N` + 定位正在播放（`scope`）；`listNavigationStack` 可扩展（日后播放列表名可替换左侧标题）。详见 `doc/ui.md`。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -59,7 +61,7 @@
 - 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
 - 歌词下载/补全尝试写入 `lyric_download_log` 审计表。
 - 已初始化 Git 仓库；`.gitignore` 忽略 `build/` 与 `.DS_Store`。
-- 项目根目录 `doc/` 文档：数据库 schema、主键/外键、读写流程（见 `doc/database.md`）。
+- 项目根目录 `doc/` 文档：数据库 schema（`doc/database.md`）、主窗口 UI 与工具栏约定（`doc/ui.md`）。
 
 最近关键修复和设计决策：
 
@@ -72,6 +74,8 @@
 - **歌词区美化**（2026-06-23）：`LyricsView` 按行距渐变字号/透明度、换行平滑过渡；`textContainerInset` 动态半屏留白修复末行高亮贴底；未使用边缘毛玻璃遮罩。
 - **曲目列表**（2026-06-23）：`TrackTableCellView` 双行布局；`歌手 - 歌名` 拆分；悬停由 `TrackTableView` + `TrackListDataSource.hoveredRow` 统一管理，修复滚动时灰底残影。
 - **空状态 + 窗口**（2026-06-23）：`EmptyStateView` 图标占位；主窗口保持平铺毛玻璃（卡片/侧栏方案已回退）；`player_state` v2 记忆主窗口 frame。
+- **播放模式**（2026-06-23）：`PlaybackMode` + 播放区模式按钮；`playerItemDidEnd` / `playNext` / `playPrevious` 按模式分支；`player_state` v3 `playback_mode` 持久化；顺序模式末首回第一首。
+- **列表顶栏 + 定位**（2026-06-23）：`listHeaderBar` / `listNavigationStack`；定位按钮放列表上方（非工具栏）。工具栏曾尝试合并/拆分 pill，结论见 `doc/ui.md`——列表导航类按钮不宜用相邻 `NSToolbarItem.image`。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。

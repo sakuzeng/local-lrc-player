@@ -5,6 +5,7 @@ import SQLite3
 struct PlayerState {
     let lastTrackId: Int64?
     let lastPosition: TimeInterval
+    let playbackMode: PlaybackMode
 }
 
 struct SavedWindowFrame: Equatable {
@@ -35,7 +36,7 @@ final class PlayerStateRepository {
     func playbackState() throws -> PlayerState {
         try database.read { db in
             let sql = """
-            SELECT last_track_id, last_position
+            SELECT last_track_id, last_position, playback_mode
             FROM player_state
             WHERE id = 1
             LIMIT 1;
@@ -43,14 +44,18 @@ final class PlayerStateRepository {
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
             guard sqlite3_step(statement) == SQLITE_ROW else {
-                return PlayerState(lastTrackId: nil, lastPosition: 0)
+                return PlayerState(lastTrackId: nil, lastPosition: 0, playbackMode: .sequential)
             }
             let lastTrackId = sqlite3_column_type(statement, 0) == SQLITE_NULL
                 ? nil
                 : sqlite3_column_int64(statement, 0)
+            let modeRaw = sqlite3_column_type(statement, 2) == SQLITE_NULL
+                ? PlaybackMode.sequential.rawValue
+                : String(cString: sqlite3_column_text(statement, 2))
             return PlayerState(
                 lastTrackId: lastTrackId,
-                lastPosition: sqlite3_column_double(statement, 1)
+                lastPosition: sqlite3_column_double(statement, 1),
+                playbackMode: PlaybackMode(rawValue: modeRaw) ?? .sequential
             )
         }
     }
@@ -103,6 +108,22 @@ final class PlayerStateRepository {
         }
     }
 
+    func updatePlaybackMode(_ mode: PlaybackMode) throws {
+        try database.write { db in
+            let sql = """
+            UPDATE player_state
+            SET playback_mode = ?
+            WHERE id = 1;
+            """
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, mode.rawValue, -1, Self.sqliteTransient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
     func updateWindowFrame(_ frame: NSRect) throws {
         let saved = SavedWindowFrame(frame)
         try database.write { db in
@@ -125,4 +146,8 @@ final class PlayerStateRepository {
             }
         }
     }
+}
+
+private extension PlayerStateRepository {
+    static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 }

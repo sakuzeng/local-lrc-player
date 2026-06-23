@@ -26,6 +26,8 @@ final class PlayerWindowController: NSWindowController {
     var restoredPlaybackPosition: TimeInterval?
     var lastSavedPlaybackTick = 0
     var isApplyingProgrammaticSliderUpdate = false
+    var playbackMode: PlaybackMode = .sequential
+    var shuffleHistory: [Int] = []
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
@@ -74,6 +76,7 @@ final class PlayerWindowController: NSWindowController {
             windowToolbar = toolbar
         }
         bindActions()
+        restorePlaybackMode()
         layout.lyricsView.showPlaceholder("请选择歌曲")
         updateControlState()
         startTimer()
@@ -171,6 +174,10 @@ final class PlayerWindowController: NSWindowController {
         layout.previousButton.action = #selector(playPrevious)
         layout.nextButton.target = self
         layout.nextButton.action = #selector(playNext)
+        layout.playbackModeButton.target = self
+        layout.playbackModeButton.action = #selector(cyclePlaybackMode)
+        layout.locatePlayingButton.target = self
+        layout.locatePlayingButton.action = #selector(locatePlayingTrack)
         layout.progressSlider.target = self
         layout.progressSlider.action = #selector(progressChanged)
         layout.progressSlider.isContinuous = true
@@ -187,6 +194,7 @@ final class PlayerWindowController: NSWindowController {
         }
         trackListDataSource.onDoubleClick = { [weak self] row in
             self?.resignSearchFieldFocus()
+            self?.resetShuffleHistory(for: row)
             self?.playTrack(at: row)
         }
 
@@ -262,10 +270,13 @@ final class PlayerWindowController: NSWindowController {
             trackCount: tracks.count,
             searchKeyword: searchKeyword
         )
+        layout.updateListHeader(trackCount: tracks.count)
         windowToolbar?.updateEnabledState(hasLibrary: hasLibrary)
         layout.playButton.isEnabled = hasTracks
         layout.previousButton.isEnabled = hasTracks
         layout.nextButton.isEnabled = hasTracks
+        layout.playbackModeButton.isEnabled = hasTracks
+        layout.locatePlayingButton.isEnabled = playingTrackURL != nil
         layout.progressSlider.isEnabled = hasTracks
         settingsWindowController?.updateLyricDownloadButtonState(hasTracks: hasTracks)
     }
@@ -404,6 +415,59 @@ final class PlayerWindowController: NSWindowController {
 
     @objc func playNextFromMenu() {
         playNext()
+    }
+
+    @objc func locatePlayingTrack() {
+        resignSearchFieldFocus()
+
+        if trackListDataSource.indexOfPlayingTrack() == nil,
+           !searchKeyword.isEmpty,
+           playingTrackURL != nil {
+            layout.searchField.stringValue = ""
+            searchKeyword = ""
+            reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: playingTrackURL)
+        }
+
+        guard let index = trackListDataSource.indexOfPlayingTrack(),
+              tracks.indices.contains(index) else {
+            layout.statusLabel.stringValue = playingTrackURL == nil
+                ? "当前没有正在播放的歌曲"
+                : "未在列表中找到正在播放的歌曲"
+            return
+        }
+
+        trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
+        layout.statusLabel.stringValue = "已定位：\(tracks[index].displayName)"
+    }
+
+    @objc func cyclePlaybackMode() {
+        playbackMode = playbackMode.next()
+        applyPlaybackMode()
+        try? playerStateRepository.updatePlaybackMode(playbackMode)
+        layout.statusLabel.stringValue = "播放模式：\(playbackMode.title)"
+    }
+
+    private func restorePlaybackMode() {
+        if let state = try? playerStateRepository.playbackState() {
+            playbackMode = state.playbackMode
+        }
+        applyPlaybackMode()
+    }
+
+    private func applyPlaybackMode() {
+        layout.setPlaybackMode(playbackMode)
+        if playbackMode != .shuffle {
+            shuffleHistory.removeAll()
+        } else if let index = currentTrackIndex, tracks.indices.contains(index) {
+            shuffleHistory = [index]
+        }
+    }
+
+    func resetShuffleHistory(for index: Int) {
+        guard playbackMode == .shuffle, tracks.indices.contains(index) else {
+            return
+        }
+        shuffleHistory = [index]
     }
 
     private static func configureWindowChrome(_ window: NSWindow) {

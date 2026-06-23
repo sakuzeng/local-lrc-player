@@ -8,11 +8,16 @@ final class PlayerWindowLayout {
     let playButton = NSButton(title: "", target: nil, action: nil)
     let previousButton = NSButton(title: "", target: nil, action: nil)
     let nextButton = NSButton(title: "", target: nil, action: nil)
+    let playbackModeButton = NSButton(title: "", target: nil, action: nil)
+    let locatePlayingButton = NSButton(title: "", target: nil, action: nil)
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
 
     private let trackListEmptyState = EmptyStateView()
     private let listContainer = NSView()
+    private let listHeaderBar = NSStackView()
+    private let listTitleLabel = NSTextField(labelWithString: "歌曲")
+    private let listNavigationStack = NSStackView()
     private let tableScrollView = NSScrollView()
 
     init(contentView: NSView) {
@@ -42,6 +47,7 @@ final class PlayerWindowLayout {
                 subtitle: "⌘, 打开设置"
             )
             trackListEmptyState.isHidden = false
+            listHeaderBar.isHidden = true
             return
         }
 
@@ -60,10 +66,20 @@ final class PlayerWindowLayout {
                 )
             }
             trackListEmptyState.isHidden = false
+            listHeaderBar.isHidden = true
             return
         }
 
         trackListEmptyState.isHidden = true
+        listHeaderBar.isHidden = false
+    }
+
+    func updateListHeader(trackCount: Int) {
+        if trackCount > 0 {
+            listTitleLabel.stringValue = "歌曲 · \(trackCount)"
+        } else {
+            listTitleLabel.stringValue = "歌曲"
+        }
     }
 
     private func setup(in contentView: NSView) {
@@ -92,7 +108,7 @@ final class PlayerWindowLayout {
         listContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
         listContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
 
-        let controls = NSStackView(views: [previousButton, playButton, nextButton, progressSlider, timeLabel])
+        let controls = NSStackView(views: [previousButton, playButton, nextButton, playbackModeButton, progressSlider, timeLabel])
         controls.orientation = .horizontal
         controls.alignment = .centerY
         controls.spacing = 12
@@ -136,14 +152,40 @@ final class PlayerWindowLayout {
         tableScrollView.borderType = .noBorder
         tableScrollView.translatesAutoresizingMaskIntoConstraints = false
 
+        listTitleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        listTitleLabel.textColor = .secondaryLabelColor
+
+        listNavigationStack.orientation = .horizontal
+        listNavigationStack.alignment = .centerY
+        listNavigationStack.spacing = 4
+        listNavigationStack.addArrangedSubview(locatePlayingButton)
+
+        listHeaderBar.orientation = .horizontal
+        listHeaderBar.alignment = .centerY
+        listHeaderBar.spacing = 8
+        listHeaderBar.translatesAutoresizingMaskIntoConstraints = false
+        listHeaderBar.addArrangedSubview(listTitleLabel)
+        listHeaderBar.addArrangedSubview(NSView()) // spacer
+        listHeaderBar.addArrangedSubview(listNavigationStack)
+        if let spacer = listHeaderBar.arrangedSubviews[1] as? NSView {
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        }
+
         trackListEmptyState.isHidden = true
+        listHeaderBar.isHidden = true
+        listContainer.addSubview(listHeaderBar)
         listContainer.addSubview(tableScrollView)
         listContainer.addSubview(trackListEmptyState)
 
         NSLayoutConstraint.activate([
+            listHeaderBar.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            listHeaderBar.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            listHeaderBar.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            listHeaderBar.heightAnchor.constraint(equalToConstant: 28),
+
             tableScrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
             tableScrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
-            tableScrollView.topAnchor.constraint(equalTo: listContainer.topAnchor),
+            tableScrollView.topAnchor.constraint(equalTo: listHeaderBar.bottomAnchor, constant: 4),
             tableScrollView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor),
 
             trackListEmptyState.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
@@ -197,6 +239,26 @@ final class PlayerWindowLayout {
         nextButton.contentTintColor = .labelColor
         nextButton.toolTip = "下一首"
         nextButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        playbackModeButton.imagePosition = .imageOnly
+        playbackModeButton.isBordered = false
+        playbackModeButton.bezelStyle = .regularSquare
+        playbackModeButton.setContentHuggingPriority(.required, for: .horizontal)
+        setPlaybackMode(.sequential)
+
+        locatePlayingButton.image = Self.symbolImage("scope", pointSize: 14, weight: .semibold)
+        locatePlayingButton.imagePosition = .imageOnly
+        locatePlayingButton.isBordered = false
+        locatePlayingButton.bezelStyle = .regularSquare
+        locatePlayingButton.contentTintColor = .secondaryLabelColor
+        locatePlayingButton.toolTip = "定位正在播放的歌曲"
+        locatePlayingButton.setContentHuggingPriority(.required, for: .horizontal)
+    }
+
+    func setPlaybackMode(_ mode: PlaybackMode) {
+        playbackModeButton.image = Self.symbolImage(mode.symbolName, pointSize: 14, weight: .semibold)
+        playbackModeButton.toolTip = mode.title
+        playbackModeButton.contentTintColor = mode == .sequential ? .secondaryLabelColor : .controlAccentColor
     }
 
     private static func symbolImage(

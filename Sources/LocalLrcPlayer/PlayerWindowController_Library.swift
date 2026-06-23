@@ -74,6 +74,7 @@ extension PlayerWindowController {
             let records = try trackRepository.masterPlaylistTracks(keyword: keyword)
             tracks = records.map { $0.asMusicTrack() }
             updatePlayingTrackInList(preferredURL: preserveTrackURL, scrollToVisible: true)
+            pruneShuffleHistory()
 
             if restoreLastSession, playingTrackURL == nil {
                 let state = try playerStateRepository.playbackState()
@@ -118,6 +119,16 @@ extension PlayerWindowController {
         }
         updatePlayingTrackInList(preferredURL: audioURL, scrollToVisible: true)
         return playingTrackURL != nil
+    }
+
+    func pruneShuffleHistory() {
+        shuffleHistory = shuffleHistory.filter { tracks.indices.contains($0) }
+        if playbackMode == .shuffle,
+           shuffleHistory.isEmpty,
+           let index = currentTrackIndex,
+           tracks.indices.contains(index) {
+            shuffleHistory = [index]
+        }
     }
 
     func syncPlayingTrackVisuals(scrollToVisible: Bool = false) {

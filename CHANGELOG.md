@@ -12,6 +12,11 @@
 - 主窗口**窗口质感**：`fullSizeContentView` + 透明标题栏 + `toolbarStyle = .unified`；全窗口 `NSVisualEffectView`（`.underWindowBackground`）毛玻璃背景。
 - 数据库测试：`testRemovingLibraryKeepsSharedTrack`、`testRemovingLibraryClearsPlayerState`。
 - 数据库 schema **v2**：`player_state` 增加主窗口位置/大小列（v1 库自动迁移）。
+- **播放模式**：顺序 / 单曲循环 / 随机；播放区按钮循环切换（`arrow.right.to.line` / `repeat.1` / `shuffle`），写入 `player_state.playback_mode`（schema v3）。
+- 数据库 schema **v3**：`player_state` 增加 `playback_mode` 列。
+- **列表顶栏定位**：曲目列表上方 `listHeaderBar`（`歌曲 · N` + `scope` 定位正在播放）；`listNavigationStack` 预留扩展位。
+- 数据库测试：`PlayerStateRepositoryTests`（`playback_mode` 默认值与持久化）。
+- 文档：`doc/ui.md`（主窗口布局与 NSToolbar 分段经验）。
 
 ### Changed
 
@@ -25,6 +30,9 @@
 - **曲目列表双行展示**（`TrackTableCellView` / `TrackTableView`）：歌名主标题 + 歌手/专辑次标题（48pt 行高）；优先解析「歌手 - 歌名」文件名或合并标题，ID3 分字段时直接用标签；播放行主题色浅底与加粗歌名（无喇叭图标）。
 - **空状态占位**（`EmptyStateView` / `UIChrome`）：列表与歌词区无内容时显示 SF Symbol + 标题/副标题；主窗口布局保持平铺毛玻璃（未采用卡片分组）。
 - **主窗口位置记忆**：`player_state` 表 v2 增加 `window_*` 四列；启动恢复上次 frame，无记录时居中；拖动/缩放与关窗时写入。
+- 底部播放控制增加**播放模式**按钮（顺序 / 单曲循环 / 随机）；曲目结束与上一首/下一首按模式切换；随机模式维护播放历史以支持「上一首」回退。
+- **顺序播放**：末首自然结束后从列表第一首继续，不再停在末尾。
+- **定位正在播放**：经工具栏多方案验证后，最终放在列表顶栏 `listNavigationStack`（`scope`）；搜索过滤时先清空搜索再滚动定位。
 
 ### Fixed
 

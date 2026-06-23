@@ -274,10 +274,62 @@ struct MenuBarLyricsMaxWidthTests {
     }
 }
 
+final class PlayerStateRepositoryTests {
+    private var database: AppDatabase!
+    private var repository: PlayerStateRepository!
+    private var tempRoot: URL!
+
+    func runAll() throws {
+        try runIsolated { try self.testDefaultPlaybackModeAfterMigration() }
+        try runIsolated { try self.testUpdatePlaybackModePersists() }
+    }
+
+    private func runIsolated(_ work: () throws -> Void) throws {
+        try setUp()
+        defer { tearDown() }
+        try work()
+    }
+
+    private func setUp() throws {
+        tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalLrcPlayerTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+        let dbURL = tempRoot.appendingPathComponent("test.sqlite")
+        database = try AppDatabase(fileURL: dbURL)
+        repository = PlayerStateRepository(database: database)
+    }
+
+    private func tearDown() {
+        if let tempRoot {
+            try? FileManager.default.removeItem(at: tempRoot)
+        }
+        database = nil
+        repository = nil
+        tempRoot = nil
+    }
+
+    private func testDefaultPlaybackModeAfterMigration() throws {
+        let state = try repository.playbackState()
+        try assertEqual(state.playbackMode, .sequential)
+    }
+
+    private func testUpdatePlaybackModePersists() throws {
+        try repository.updatePlaybackMode(.shuffle)
+        var state = try repository.playbackState()
+        try assertEqual(state.playbackMode, .shuffle)
+
+        try repository.updatePlaybackMode(.repeatOne)
+        state = try repository.playbackState()
+        try assertEqual(state.playbackMode, .repeatOne)
+    }
+}
+
 do {
     try TrackContentHasherTests().runAll()
     try MasterPlaylistRepositoryTests().runAll()
     try AppSettingsRepositoryTests().runAll()
+    try PlayerStateRepositoryTests().runAll()
     try MenuBarLyricsMaxWidthTests().runAll()
     print("All tests passed.")
 } catch {

@@ -21,7 +21,7 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
-    static let currentSchemaVersion = 2
+    static let currentSchemaVersion = 3
 
     static let shared: AppDatabase = {
         do {
@@ -110,6 +110,9 @@ final class AppDatabase {
             if try currentSchemaVersion(db) < 2 {
                 try Self.applyMigrationV2(db, database: self)
             }
+            if try currentSchemaVersion(db) < 3 {
+                try Self.applyMigrationV3(db, database: self)
+            }
 
             let version = try currentSchemaVersion(db)
             if version < Self.currentSchemaVersion {
@@ -128,6 +131,13 @@ final class AppDatabase {
         for sql in statements {
             try database.exec(db, sql: sql)
         }
+    }
+
+    private static func applyMigrationV3(_ db: OpaquePointer, database: AppDatabase) throws {
+        try database.exec(
+            db,
+            sql: "ALTER TABLE player_state ADD COLUMN playback_mode TEXT NOT NULL DEFAULT 'sequential';"
+        )
     }
 
     private func currentSchemaVersion(_ db: OpaquePointer) throws -> Int {

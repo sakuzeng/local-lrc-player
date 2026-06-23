@@ -21,6 +21,7 @@ extension PlayerWindowController {
 
         layout.setPlayButtonShowsPause(false)
         layout.statusLabel.stringValue = "已恢复上次选中的歌曲：\(track.displayName)"
+        updateControlState()
     }
 
     func playTrack(
@@ -192,6 +193,7 @@ extension PlayerWindowController {
         if let userSelected = trackListDataSource.userSelectedTrackIndex,
            let playing,
            userSelected != playing {
+            resetShuffleHistory(for: userSelected)
             playTrack(at: userSelected)
             return
         }
@@ -227,8 +229,20 @@ extension PlayerWindowController {
             return
         }
 
-        let nextIndex = max((currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0) - 1, 0)
-        playTrack(at: nextIndex)
+        let current = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0
+        switch playbackMode {
+        case .sequential, .repeatOne:
+            playTrack(at: max(current - 1, 0))
+        case .shuffle:
+            if shuffleHistory.count > 1 {
+                shuffleHistory.removeLast()
+                if let previous = shuffleHistory.last {
+                    playTrack(at: previous)
+                    return
+                }
+            }
+            playTrack(at: max(current - 1, 0))
+        }
     }
 
     @objc func playNext() {
@@ -236,9 +250,14 @@ extension PlayerWindowController {
             return
         }
 
-        let baseIndex = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? -1
-        let nextIndex = min(baseIndex + 1, tracks.count - 1)
-        playTrack(at: nextIndex)
+        let current = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0
+        switch playbackMode {
+        case .sequential, .repeatOne:
+            playTrack(at: min(current + 1, tracks.count - 1))
+        case .shuffle:
+            appendShuffleHistory(current)
+            playTrack(at: randomTrackIndex(excluding: current))
+        }
     }
 
     func playerItemDidEnd() {
@@ -246,16 +265,37 @@ extension PlayerWindowController {
             return
         }
 
-        let nextIndex = currentTrackIndex + 1
-        if tracks.indices.contains(nextIndex) {
-            playTrack(at: nextIndex)
-        } else {
-            playbackController.resetToStart()
-            layout.setPlayButtonShowsPause(false)
-            layout.statusLabel.stringValue = "播放结束"
-            saveCurrentPlaybackState(position: 0)
-            syncMenuBarLyrics(at: 0)
+        switch playbackMode {
+        case .sequential:
+            let nextIndex = currentTrackIndex + 1
+            if tracks.indices.contains(nextIndex) {
+                playTrack(at: nextIndex)
+            } else {
+                playTrack(at: 0)
+            }
+        case .repeatOne:
+            playTrack(at: currentTrackIndex, resumePosition: 0)
+        case .shuffle:
+            appendShuffleHistory(currentTrackIndex)
+            playTrack(at: randomTrackIndex(excluding: currentTrackIndex))
         }
+    }
+
+    private func appendShuffleHistory(_ index: Int) {
+        guard playbackMode == .shuffle, tracks.indices.contains(index) else {
+            return
+        }
+        if shuffleHistory.last != index {
+            shuffleHistory.append(index)
+        }
+    }
+
+    private func randomTrackIndex(excluding excluded: Int?) -> Int {
+        guard tracks.count > 1, let excluded, tracks.indices.contains(excluded) else {
+            return excluded ?? 0
+        }
+        let candidates = tracks.indices.filter { $0 != excluded }
+        return candidates.randomElement() ?? excluded
     }
 
     @objc func progressChanged() {
