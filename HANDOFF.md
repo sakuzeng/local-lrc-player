@@ -29,6 +29,7 @@
 - 主窗口**毛玻璃质感**：透明标题栏 + unified 工具栏 + `NSVisualEffectView` 背景；列表/歌词无边框。
 - 底部**图标化播放控制**与自定义进度条（`PlayerWindowLayout` / `SeekSlider`）。
 - **歌词区**：距离渐变淡出、当前行主题色高亮与换行动画；动态上下留白使首尾行可居中显示（`LyricsView`）。
+- **曲目列表**：双行单元格（歌名 + 歌手/专辑）；`歌手 - 歌名` 解析；`TrackTableView` 集中管理悬停；播放行主题色浅底（`TrackListDataSource`）。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -50,7 +51,7 @@
 - 多语种歌词会按同一时间戳交错输出原文和译文；网易云返回英文译文时继续追加英文译文。
 - 播放时日文/英文原文和中文译文会同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
 - 歌曲列表支持搜索（歌名、歌手、专辑）；「刷新」按钮增量 sync 全部已注册文件夹。
-- 正在播放曲目在列表中以自定义行样式标识（`playingTrackURL` / `TrackRowView`）：浅灰=仅选中、主题色浅底=播放中、竖条=播放且选中；搜索取消后仍定位到总列表对应行。
+- 正在播放曲目在列表中以自定义行样式标识（`playingTrackURL` / `TrackRowView`）：浅灰=仅选中、主题色浅底=播放中；双行显示歌名与歌手/专辑；搜索取消后仍定位到总列表对应行。
 - 关闭主窗口后应用不退出（`applicationShouldTerminateAfterLastWindowClosed = false`），菜单栏歌词继续更新；⌘Q 或 Dock 可完全退出。
 - 搜索框启动时不自动获得焦点；点击其他区域时失焦，避免误输入。
 - 本地 SQLite 索引音乐库与曲目；启动恢复上次库、选中曲目与进度位置（不自动播放）。
@@ -67,6 +68,7 @@
 - **窗口质感**（2026-06-23）：`fullSizeContentView`、unified 工具栏、毛玻璃背景；内容区对齐 safe area。
 - **播放区 UI + seek**（2026-06-23）：SF Symbol 播放控制、自定义 `SeekSlider`；修复拖动/启动时歌词不同步、未播放时拖动无效、圆点与轨道对齐等问题（`PlayerWindowController_Playback`、`LyricsView.updateWhenReady`、`completeSliderSeek`）。
 - **歌词区美化**（2026-06-23）：`LyricsView` 按行距渐变字号/透明度、换行平滑过渡；`textContainerInset` 动态半屏留白修复末行高亮贴底；未使用边缘毛玻璃遮罩。
+- **曲目列表**（2026-06-23）：`TrackTableCellView` 双行布局；`歌手 - 歌名` 拆分；悬停由 `TrackTableView` + `TrackListDataSource.hoveredRow` 统一管理，修复滚动时灰底残影。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。

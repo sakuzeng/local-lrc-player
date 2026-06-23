@@ -3,7 +3,7 @@ import AppKit
 final class PlayerWindowLayout {
     let searchField = NSSearchField()
     let statusLabel = NSTextField(labelWithString: "请选择一个音乐文件夹")
-    let tableView = NSTableView()
+    let tableView = TrackTableView()
     let lyricsView = LyricsView()
     let playButton = NSButton(title: "", target: nil, action: nil)
     let previousButton = NSButton(title: "", target: nil, action: nil)
@@ -106,7 +106,7 @@ final class PlayerWindowLayout {
         tableColumn.resizingMask = .autoresizingMask
         tableView.addTableColumn(tableColumn)
         tableView.headerView = nil
-        tableView.rowHeight = 34
+        tableView.rowHeight = 48
         tableView.usesAlternatingRowBackgroundColors = false
         tableView.allowsEmptySelection = true
         tableView.backgroundColor = .clear
