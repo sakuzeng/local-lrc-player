@@ -49,7 +49,7 @@
 - **歌曲末尾歌词贴底**：歌词区上下留白随视口高度调整，末行高亮可保持在视口正中而非被 `maxY` 卡在底部。
 - **列表悬停滚动残影**：悬停状态改由 `TrackListDataSource` 集中管理；`TrackTableView` 监听鼠标移动，滚动时按当前指针重算悬停行，避免行复用后多行灰底残留。
 - **顺序播放模式按钮不高亮**：`setPlaybackMode` 对三种模式统一使用 `controlAccentColor`，不再将顺序模式降为次要色。
-- **刷新后列表排序不更新**：每次 `TrackRepository.sync` 结束后按 `file_name` 重算总播放列表 `sort_order`。
+- **刷新后列表排序不更新**：每次 `TrackRepository.sync` 结束后重算总播放列表 `sort_order`（先按 `library_id`，再按列表显示名自然排序；见 2026-06-25 条目）。
 - **歌词下载时 Cookie 按钮变灰且无法恢复**：下载进行中仅禁用下载类按钮；切换 Cookie 来源或重新打开设置会刷新状态；关闭候选窗口（含点 ×）会正确恢复按钮。
 - **下载当前歌词只显示单一来源**：已配置双 Cookie 时候选对话框始终按网易云 / QQ 音乐分组展示（某来源无结果时仍显示对应分组标题）。
 - **QQ 音乐搜索始终返回空候选**：2026-06-15 从 `client_search_cp` 迁到 `musicu.fcg` 时，请求附带 `comm.ct=24&cv=0`（模拟桌面客户端）；QQ 音乐上游后来对该参数改为 HTTP 200 + `code:0` 但 `song.list` 为空（静默失败，与近期 UI/设置改动无关）。已移除搜索请求中的 `comm` 字段；双源候选与歌词预览恢复正常。
@@ -58,6 +58,27 @@
 
 - `./build.sh` 构建成功。
 - `./test.sh` 全部通过（含 `PlayerStateRepositoryTests`）。
+
+## 2026-06-25
+
+本日主要交付：底部播放区布局重构（传输/进度分列对齐歌词）、播放控制视觉统一、总列表排序规则改进。
+
+### Changed
+
+- **底部播放区**：传输控制（上一首/播放/下一首 + 播放模式 pill）放在列表列底栏 `transportBar`；进度条 + 时间放在歌词列底栏 `progressBar`，左右 28pt 与歌词 `textContainerInset` 对齐。
+- **传输控制视觉**：上一首/播放/下一首共用同一 `quaternarySystemFill` pill，取消播放键单独圆形主题色底；三键统一 32×32 无边框图标样式。
+- **播放模式按钮**：独立 pill（与传输组间距 20pt）；顺序模式图标改为 `arrow.right.to.line.compact`；单曲循环/随机用 SF Symbol 分层主题色，顺序模式用次要色。
+- **总列表排序**（刷新后生效）：先按音乐库注册顺序（`library_id`），同库内按列表显示名（优先 ID3「歌手 - 歌名」，否则文件名）做 macOS 自然排序（`localizedStandardCompare`），替代原先仅按 `file_name` + SQLite `NOCASE` 排序。
+
+### Fixed
+
+- **启动即崩溃**：底部栏曾用 `widthAnchor` 跨 split 绑定列表列宽，与 `NSSplitView` 列宽约束冲突导致 Auto Layout 异常；已改为底栏放入各自 split 子视图。
+- **列表排序与显示不一致**：列表展示 ID3 歌手/歌名，旧排序只按原始文件名且中文等字符在 SQLite `NOCASE` 下与 Finder 自然顺序不同；已统一排序键与展示逻辑。
+
+### Verified
+
+- `./build.sh` 构建成功。
+- `./test.sh` 全部通过。
 
 ## 2026-06-15
 

@@ -33,7 +33,7 @@ final class PlaylistRepository {
                  )
                 """
             }
-            sql += " ORDER BY pt.sort_order ASC, t.file_name COLLATE NOCASE ASC;"
+            sql += " ORDER BY pt.sort_order ASC;"
 
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
@@ -128,21 +128,40 @@ final class PlaylistRepository {
         }
     }
 
-    func reorderMasterPlaylistByFileName(db: OpaquePointer) throws {
+    func reorderMasterPlaylist(db: OpaquePointer) throws {
         let selectSQL = """
-        SELECT pt.track_id
+        SELECT t.id, t.library_id, t.file_name, t.title, t.artist
         FROM playlist_tracks pt
         JOIN tracks t ON t.id = pt.track_id
-        WHERE pt.playlist_id = ?
-        ORDER BY t.file_name COLLATE NOCASE ASC;
+        WHERE pt.playlist_id = ?;
         """
         let select = try database.prepare(db, sql: selectSQL)
         defer { sqlite3_finalize(select) }
         sqlite3_bind_int64(select, 1, MasterPlaylist.id)
 
-        var trackIds: [Int64] = []
+        var entries: [(trackId: Int64, libraryId: Int64, sortKey: String)] = []
         while sqlite3_step(select) == SQLITE_ROW {
-            trackIds.append(sqlite3_column_int64(select, 0))
+            let trackId = sqlite3_column_int64(select, 0)
+            let libraryId = sqlite3_column_int64(select, 1)
+            let fileName = String(cString: sqlite3_column_text(select, 2))
+            let title = sqlite3_column_type(select, 3) == SQLITE_NULL
+                ? nil
+                : String(cString: sqlite3_column_text(select, 3))
+            let artist = sqlite3_column_type(select, 4) == SQLITE_NULL
+                ? nil
+                : String(cString: sqlite3_column_text(select, 4))
+            entries.append((
+                trackId: trackId,
+                libraryId: libraryId,
+                sortKey: Self.playlistSortKey(fileName: fileName, title: title, artist: artist)
+            ))
+        }
+
+        entries.sort { lhs, rhs in
+            if lhs.libraryId != rhs.libraryId {
+                return lhs.libraryId < rhs.libraryId
+            }
+            return lhs.sortKey.localizedStandardCompare(rhs.sortKey) == .orderedAscending
         }
 
         let updateSQL = """
@@ -153,16 +172,29 @@ final class PlaylistRepository {
         let update = try database.prepare(db, sql: updateSQL)
         defer { sqlite3_finalize(update) }
 
-        for (index, trackId) in trackIds.enumerated() {
+        for (index, entry) in entries.enumerated() {
             sqlite3_reset(update)
             sqlite3_clear_bindings(update)
             sqlite3_bind_int64(update, 1, Int64(index + 1))
             sqlite3_bind_int64(update, 2, MasterPlaylist.id)
-            sqlite3_bind_int64(update, 3, trackId)
+            sqlite3_bind_int64(update, 3, entry.trackId)
             guard sqlite3_step(update) == SQLITE_DONE else {
                 throw AppDatabaseError.stepFailed(database.errorMessage(db))
             }
         }
+    }
+
+    /// 与列表展示一致：优先「歌手 - 歌名」，否则文件名（不含扩展名）；刷新时用系统自然排序。
+    private static func playlistSortKey(fileName: String, title: String?, artist: String?) -> String {
+        let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let trimmedArtist = artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedTitle.isEmpty {
+            if !trimmedArtist.isEmpty {
+                return "\(trimmedArtist) - \(trimmedTitle)"
+            }
+            return trimmedTitle
+        }
+        return (fileName as NSString).deletingPathExtension
     }
 
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

@@ -1,6 +1,10 @@
 import AppKit
 
 final class PlayerWindowLayout {
+    /// 与 `LyricsView` 的 `textContainerInset.width` 保持一致，便于进度条与歌词文本对齐。
+    private static let lyricsHorizontalInset: CGFloat = 28
+    private static let playbackBarHeight: CGFloat = 52
+
     let searchField = NSSearchField()
     let statusLabel = NSTextField(labelWithString: "请选择一个音乐文件夹")
     let tableView = TrackTableView()
@@ -15,10 +19,13 @@ final class PlayerWindowLayout {
 
     private let trackListEmptyState = EmptyStateView()
     private let listContainer = NSView()
+    private let lyricsContainer = NSView()
     private let listHeaderBar = NSStackView()
     private let listTitleLabel = NSTextField(labelWithString: "歌曲")
     private let listNavigationStack = NSStackView()
     private let tableScrollView = NSScrollView()
+    private let transportBar = NSView()
+    private let progressBar = NSView()
 
     init(contentView: NSView) {
         setup(in: contentView)
@@ -84,6 +91,7 @@ final class PlayerWindowLayout {
 
     private func setup(in contentView: NSView) {
         configureTransportButtons()
+        configurePlaybackBars()
 
         searchField.placeholderString = "搜索歌曲、歌手或专辑"
         searchField.sendsSearchStringImmediately = true
@@ -98,32 +106,18 @@ final class PlayerWindowLayout {
 
         setupTrackTable()
         configureListContainer()
+        configureLyricsContainer()
 
         let splitView = NSSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.addArrangedSubview(listContainer)
-        splitView.addArrangedSubview(lyricsView)
+        splitView.addArrangedSubview(lyricsContainer)
 
         listContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
         listContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
 
-        let controls = NSStackView(views: [previousButton, playButton, nextButton, playbackModeButton, progressSlider, timeLabel])
-        controls.orientation = .horizontal
-        controls.alignment = .centerY
-        controls.spacing = 12
-
-        progressSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        progressSlider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        progressSlider.translatesAutoresizingMaskIntoConstraints = false
-        progressSlider.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        playButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            playButton.widthAnchor.constraint(equalToConstant: 36),
-            playButton.heightAnchor.constraint(equalToConstant: 36)
-        ])
-
-        let root = NSStackView(views: [splitView, statusLabel, controls])
+        let root = NSStackView(views: [splitView, statusLabel])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 12
@@ -139,8 +133,94 @@ final class PlayerWindowLayout {
 
             splitView.widthAnchor.constraint(equalTo: root.widthAnchor),
             splitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),
-            controls.widthAnchor.constraint(equalTo: root.widthAnchor),
             statusLabel.widthAnchor.constraint(equalTo: root.widthAnchor)
+        ])
+    }
+
+    private func configurePlaybackBars() {
+        progressSlider.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        progressSlider.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        progressSlider.translatesAutoresizingMaskIntoConstraints = false
+        progressSlider.heightAnchor.constraint(equalToConstant: 24).isActive = true
+
+        playButton.translatesAutoresizingMaskIntoConstraints = false
+        previousButton.translatesAutoresizingMaskIntoConstraints = false
+        nextButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            playButton.widthAnchor.constraint(equalToConstant: 32),
+            playButton.heightAnchor.constraint(equalToConstant: 32),
+            previousButton.widthAnchor.constraint(equalToConstant: 32),
+            previousButton.heightAnchor.constraint(equalToConstant: 32),
+            nextButton.widthAnchor.constraint(equalToConstant: 32),
+            nextButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+
+        let transportCluster = NSStackView(views: [previousButton, playButton, nextButton])
+        transportCluster.orientation = .horizontal
+        transportCluster.alignment = .centerY
+        transportCluster.spacing = 6
+        transportCluster.translatesAutoresizingMaskIntoConstraints = false
+
+        let clusterBackground = NSView()
+        clusterBackground.wantsLayer = true
+        clusterBackground.layer?.cornerRadius = 22
+        clusterBackground.layer?.cornerCurve = .continuous
+        clusterBackground.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        clusterBackground.translatesAutoresizingMaskIntoConstraints = false
+        clusterBackground.addSubview(transportCluster)
+
+        NSLayoutConstraint.activate([
+            transportCluster.leadingAnchor.constraint(equalTo: clusterBackground.leadingAnchor, constant: 6),
+            transportCluster.trailingAnchor.constraint(equalTo: clusterBackground.trailingAnchor, constant: -6),
+            transportCluster.topAnchor.constraint(equalTo: clusterBackground.topAnchor, constant: 4),
+            transportCluster.bottomAnchor.constraint(equalTo: clusterBackground.bottomAnchor, constant: -4)
+        ])
+
+        let modePill = NSView()
+        modePill.wantsLayer = true
+        modePill.layer?.cornerRadius = 22
+        modePill.layer?.cornerCurve = .continuous
+        modePill.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        modePill.translatesAutoresizingMaskIntoConstraints = false
+        modePill.addSubview(playbackModeButton)
+
+        playbackModeButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            modePill.widthAnchor.constraint(equalToConstant: 40),
+            modePill.heightAnchor.constraint(equalToConstant: 40),
+            playbackModeButton.centerXAnchor.constraint(equalTo: modePill.centerXAnchor),
+            playbackModeButton.centerYAnchor.constraint(equalTo: modePill.centerYAnchor),
+            playbackModeButton.widthAnchor.constraint(equalToConstant: 32),
+            playbackModeButton.heightAnchor.constraint(equalToConstant: 32)
+        ])
+
+        let transportRow = NSStackView(views: [clusterBackground, modePill])
+        transportRow.orientation = .horizontal
+        transportRow.alignment = .centerY
+        transportRow.spacing = 20
+        transportRow.translatesAutoresizingMaskIntoConstraints = false
+
+        transportBar.translatesAutoresizingMaskIntoConstraints = false
+        transportBar.addSubview(transportRow)
+
+        let progressRow = NSStackView(views: [progressSlider, timeLabel])
+        progressRow.orientation = .horizontal
+        progressRow.alignment = .centerY
+        progressRow.spacing = 12
+        progressRow.translatesAutoresizingMaskIntoConstraints = false
+
+        progressBar.translatesAutoresizingMaskIntoConstraints = false
+        progressBar.addSubview(progressRow)
+
+        NSLayoutConstraint.activate([
+            transportBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight),
+            transportRow.centerXAnchor.constraint(equalTo: transportBar.centerXAnchor),
+            transportRow.centerYAnchor.constraint(equalTo: transportBar.centerYAnchor),
+
+            progressBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight),
+            progressRow.leadingAnchor.constraint(equalTo: progressBar.leadingAnchor, constant: Self.lyricsHorizontalInset),
+            progressRow.trailingAnchor.constraint(equalTo: progressBar.trailingAnchor, constant: -Self.lyricsHorizontalInset),
+            progressRow.centerYAnchor.constraint(equalTo: progressBar.centerYAnchor)
         ])
     }
 
@@ -175,6 +255,7 @@ final class PlayerWindowLayout {
         listHeaderBar.isHidden = true
         listContainer.addSubview(listHeaderBar)
         listContainer.addSubview(tableScrollView)
+        listContainer.addSubview(transportBar)
         listContainer.addSubview(trackListEmptyState)
 
         NSLayoutConstraint.activate([
@@ -186,12 +267,35 @@ final class PlayerWindowLayout {
             tableScrollView.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
             tableScrollView.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
             tableScrollView.topAnchor.constraint(equalTo: listHeaderBar.bottomAnchor, constant: 4),
-            tableScrollView.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor),
+            tableScrollView.bottomAnchor.constraint(equalTo: transportBar.topAnchor),
+
+            transportBar.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
+            transportBar.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
+            transportBar.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor),
 
             trackListEmptyState.leadingAnchor.constraint(equalTo: listContainer.leadingAnchor),
             trackListEmptyState.trailingAnchor.constraint(equalTo: listContainer.trailingAnchor),
             trackListEmptyState.topAnchor.constraint(equalTo: listContainer.topAnchor),
             trackListEmptyState.bottomAnchor.constraint(equalTo: listContainer.bottomAnchor)
+        ])
+    }
+
+    private func configureLyricsContainer() {
+        lyricsContainer.translatesAutoresizingMaskIntoConstraints = false
+        lyricsView.translatesAutoresizingMaskIntoConstraints = false
+
+        lyricsContainer.addSubview(lyricsView)
+        lyricsContainer.addSubview(progressBar)
+
+        NSLayoutConstraint.activate([
+            lyricsView.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
+            lyricsView.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
+            lyricsView.topAnchor.constraint(equalTo: lyricsContainer.topAnchor),
+            lyricsView.bottomAnchor.constraint(equalTo: progressBar.topAnchor),
+
+            progressBar.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
+            progressBar.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
+            progressBar.bottomAnchor.constraint(equalTo: lyricsContainer.bottomAnchor)
         ])
     }
 
@@ -225,10 +329,10 @@ final class PlayerWindowLayout {
         previousButton.toolTip = "上一首"
         previousButton.setContentHuggingPriority(.required, for: .horizontal)
 
-        playButton.bezelStyle = .circular
-        playButton.controlSize = .large
+        playButton.bezelStyle = .regularSquare
+        playButton.isBordered = false
         playButton.imagePosition = .imageOnly
-        playButton.contentTintColor = .white
+        playButton.contentTintColor = .labelColor
         setPlayButtonShowsPause(false)
         playButton.setContentHuggingPriority(.required, for: .horizontal)
 
@@ -256,9 +360,22 @@ final class PlayerWindowLayout {
     }
 
     func setPlaybackMode(_ mode: PlaybackMode) {
-        playbackModeButton.image = Self.symbolImage(mode.symbolName, pointSize: 14, weight: .semibold)
+        playbackModeButton.image = Self.modeSymbolImage(for: mode)
         playbackModeButton.toolTip = mode.title
-        playbackModeButton.contentTintColor = .controlAccentColor
+    }
+
+    private static func modeSymbolImage(for mode: PlaybackMode) -> NSImage? {
+        let pointSize: CGFloat = 15
+        let weight: NSFont.Weight = .medium
+        var config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        switch mode {
+        case .sequential:
+            config = config.applying(NSImage.SymbolConfiguration(hierarchicalColor: .secondaryLabelColor))
+        case .repeatOne, .shuffle:
+            config = config.applying(NSImage.SymbolConfiguration(hierarchicalColor: .controlAccentColor))
+        }
+        return NSImage(systemSymbolName: mode.symbolName, accessibilityDescription: mode.title)?
+            .withSymbolConfiguration(config)
     }
 
     private static func symbolImage(

@@ -14,12 +14,11 @@
 ├──────────────────────────────────────────────────────┤
 │  曲目列表          │  歌词区                          │
 │  ┌ listHeaderBar ─┐│                                  │
-│  │ 歌曲·N    [定位]││                                  │
-│  └────────────────┘│                                  │
-│  TrackTableView    │  LyricsView                      │
+│  │ 歌曲·N    [定位]││  LyricsView                      │
+│  TrackTableView    │                                  │
+│  [◀ ▶ ▶] [模式]    │  [━━━━ 进度条 ━━━━] 00:00/03:45  │
 ├──────────────────────────────────────────────────────┤
-│  statusLabel                                           │
-│  [上一首][播放][下一首][模式][━━━━进度条━━━━][时间]   │
+│  statusLabel（全宽）                                    │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -28,7 +27,10 @@
 | **工具栏** | 音乐库操作（选文件夹、刷新）+ 全局搜索 |
 | **列表顶栏** `listHeaderBar` | 当前列表标题（日后可换播放列表名）+ **列表导航**按钮 |
 | **列表导航** `listNavigationStack` | 与列表强相关的操作（定位正在播放等），便于横向扩展 |
-| **播放区** | 传输控制、播放模式、进度条 |
+| **列表底栏** `transportBar` | 传输控制 pill + 播放模式（在 split 左列内） |
+| **歌词底栏** `progressBar` | 进度条 + 时间，左右 28pt 与歌词 `textContainerInset` 对齐（在 split 右列内） |
+
+播放底栏放在各自 split 子视图内，**不要**在 split 外再用 `widthAnchor` 绑定列宽，否则易触发 Auto Layout 冲突导致启动崩溃。
 
 窗口样式：`fullSizeContentView` + `toolbarStyle = .unified` + 全窗 `NSVisualEffectView` 毛玻璃。
 
@@ -89,10 +91,16 @@
 
 ## 播放模式（播放区）
 
-- 按钮：`playbackModeButton`，循环切换 顺序 → 单曲循环 → 随机。
-- 图标：`arrow.right.to.line` / `repeat.1` / `shuffle`；当前模式统一用主题色高亮。
+- 按钮：`playbackModeButton`，位于列表列底栏 `transportBar`，与传输控制 pill 间距 20pt，单独 `quaternarySystemFill` pill。
+- 图标：`arrow.right.to.line.compact` / `repeat.1` / `shuffle`；单曲循环与随机为分层主题色，顺序模式为次要色。
 - 持久化：`player_state.playback_mode`（schema v3）。
 - **顺序播放**：列表播完后**从第一首继续**（非停止）；单曲循环重播当前曲；随机维护 `shuffleHistory` 支持上一首回退。
+
+## 总列表排序
+
+- 查询按 `playlist_tracks.sort_order`；每次 `TrackRepository.sync` 结束调用 `reorderMasterPlaylist` 重算。
+- 规则：先 `library_id` 升序（库注册顺序），同库内按列表显示名 `localizedStandardCompare`（有 ID3 用「歌手 - 歌名」，否则文件名不含扩展名）。
+- 用户感觉顺序不对时，先 **⌘R 刷新** 触发重排。
 
 ---
 

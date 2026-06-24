@@ -19,7 +19,7 @@ enum PlaybackMode: String, CaseIterable {
     var symbolName: String {
         switch self {
         case .sequential:
-            return "arrow.right.to.line"
+            return "arrow.right.to.line.compact"
         case .repeatOne:
             return "repeat.1"
         case .shuffle:

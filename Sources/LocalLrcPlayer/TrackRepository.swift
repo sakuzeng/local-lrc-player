@@ -127,7 +127,7 @@ final class TrackRepository {
                 removed += 1
             }
 
-            try playlistRepository.reorderMasterPlaylistByFileName(db: db)
+            try playlistRepository.reorderMasterPlaylist(db: db)
 
             let counts = try playlistRepository.masterPlaylistCounts(db: db)
             return TrackSyncSummary(

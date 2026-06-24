@@ -27,7 +27,7 @@
 - **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕，并滚回顶部显示「音乐库」。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
 - 主窗口**毛玻璃质感**：透明标题栏 + unified 工具栏 + `NSVisualEffectView` 背景；列表/歌词无边框。
-- 底部**图标化播放控制**与自定义进度条（`PlayerWindowLayout` / `SeekSlider`）。
+- 底部**图标化播放控制**与自定义进度条（`PlayerWindowLayout` / `SeekSlider`）；传输控制在列表列底、进度条在歌词列底（与歌词文本 28pt 内边距对齐）；底栏须放在 split 子视图内，勿跨层级绑列宽（否则启动崩溃）。
 - **歌词区**：距离渐变淡出、当前行主题色高亮与换行动画；动态上下留白使首尾行可居中显示（`LyricsView`）。
 - **曲目列表**：双行单元格（歌名 + 歌手/专辑）；`歌手 - 歌名` 解析；`TrackTableView` 集中管理悬停；播放行主题色浅底（`TrackListDataSource`）。
 - **空状态**：列表/歌词无内容时 SF Symbol 占位（`UIChrome` / `EmptyStateView`）；主窗口仍为平铺毛玻璃布局。
@@ -74,7 +74,8 @@
 - **歌词区美化**（2026-06-23）：`LyricsView` 按行距渐变字号/透明度、换行平滑过渡；`textContainerInset` 动态半屏留白修复末行高亮贴底；未使用边缘毛玻璃遮罩。
 - **曲目列表**（2026-06-23）：`TrackTableCellView` 双行布局；`歌手 - 歌名` 拆分；悬停由 `TrackTableView` + `TrackListDataSource.hoveredRow` 统一管理，修复滚动时灰底残影。
 - **空状态 + 窗口**（2026-06-23）：`EmptyStateView` 图标占位；主窗口保持平铺毛玻璃（卡片/侧栏方案已回退）；`player_state` v2 记忆主窗口 frame。
-- **播放模式 + 定位**（2026-06-23）：`PlaybackMode`、`listHeaderBar`；定位放列表顶栏（工具栏不宜拆 pill，见 `doc/ui.md`）；顺序模式按钮高亮已修复。
+- **播放模式 + 定位**（2026-06-23）：`PlaybackMode`、`listHeaderBar`；定位放列表顶栏（工具栏不宜拆 pill，见 `doc/ui.md`）。
+- **播放区底栏**（2026-06-25）：`transportBar` / `progressBar` 分列；传输三键 + 模式 pill 视觉统一；排序改为库顺序 + 显示名自然序（`PlaylistRepository.reorderMasterPlaylist`）。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
