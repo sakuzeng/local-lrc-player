@@ -76,6 +76,7 @@
 - **空状态 + 窗口**（2026-06-23）：`EmptyStateView` 图标占位；主窗口保持平铺毛玻璃（卡片/侧栏方案已回退）；`player_state` v2 记忆主窗口 frame。
 - **播放模式 + 定位**（2026-06-23）：`PlaybackMode`、`listHeaderBar`；定位放列表顶栏（工具栏不宜拆 pill，见 `doc/ui.md`）。
 - **播放区底栏**（2026-06-25）：`transportBar` / `progressBar` 分列；传输三键 + 模式 pill 视觉统一；排序改为库顺序 + 显示名自然序（`PlaylistRepository.reorderMasterPlaylist`）。
+- **启动时间预览**（2026-06-25）：未播放时 `refreshIdlePlaybackDisplay` 用 `resolvedPlaybackDuration` + `restoredPlaybackPosition` 刷新时间标签，避免 `tick()` 重置为 `00:00 / 00:00`。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。

@@ -92,7 +92,7 @@
 ## 播放模式（播放区）
 
 - 按钮：`playbackModeButton`，位于列表列底栏 `transportBar`，与传输控制 pill 间距 20pt，单独 `quaternarySystemFill` pill。
-- 图标：`arrow.right.to.line.compact` / `repeat.1` / `shuffle`；单曲循环与随机为分层主题色，顺序模式为次要色。
+- 图标：`arrow.right.to.line.compact` / `repeat.1` / `shuffle`；当前模式统一用分层主题色高亮。
 - 持久化：`player_state.playback_mode`（schema v3）。
 - **顺序播放**：列表播完后**从第一首继续**（非停止）；单曲循环重播当前曲；随机维护 `shuffleHistory` 支持上一首回退。
 

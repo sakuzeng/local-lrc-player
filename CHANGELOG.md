@@ -67,13 +67,15 @@
 
 - **底部播放区**：传输控制（上一首/播放/下一首 + 播放模式 pill）放在列表列底栏 `transportBar`；进度条 + 时间放在歌词列底栏 `progressBar`，左右 28pt 与歌词 `textContainerInset` 对齐。
 - **传输控制视觉**：上一首/播放/下一首共用同一 `quaternarySystemFill` pill，取消播放键单独圆形主题色底；三键统一 32×32 无边框图标样式。
-- **播放模式按钮**：独立 pill（与传输组间距 20pt）；顺序模式图标改为 `arrow.right.to.line.compact`；单曲循环/随机用 SF Symbol 分层主题色，顺序模式用次要色。
+- **播放模式按钮**：独立 pill（与传输组间距 20pt）；顺序模式图标改为 `arrow.right.to.line.compact`；当前模式统一用 SF Symbol 分层主题色高亮。
 - **总列表排序**（刷新后生效）：先按音乐库注册顺序（`library_id`），同库内按列表显示名（优先 ID3「歌手 - 歌名」，否则文件名）做 macOS 自然排序（`localizedStandardCompare`），替代原先仅按 `file_name` + SQLite `NOCASE` 排序。
 
 ### Fixed
 
 - **启动即崩溃**：底部栏曾用 `widthAnchor` 跨 split 绑定列表列宽，与 `NSSplitView` 列宽约束冲突导致 Auto Layout 异常；已改为底栏放入各自 split 子视图。
 - **列表排序与显示不一致**：列表展示 ID3 歌手/歌名，旧排序只按原始文件名且中文等字符在 SQLite `NOCASE` 下与 Finder 自然顺序不同；已统一排序键与展示逻辑。
+- **顺序播放模式不高亮**：播放模式 pill 美化后顺序模式误用次要色；三种模式当前态均用主题色。
+- **重启后进度时间显示 00:00 / 00:00**：未加载 AVPlayer 时 `tick()` 覆盖会话恢复的时间标签；改为 `refreshIdlePlaybackDisplay` 用已选曲目时长与上次进度预览。
 
 ### Verified
 

@@ -367,13 +367,8 @@ final class PlayerWindowLayout {
     private static func modeSymbolImage(for mode: PlaybackMode) -> NSImage? {
         let pointSize: CGFloat = 15
         let weight: NSFont.Weight = .medium
-        var config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
-        switch mode {
-        case .sequential:
-            config = config.applying(NSImage.SymbolConfiguration(hierarchicalColor: .secondaryLabelColor))
-        case .repeatOne, .shuffle:
-            config = config.applying(NSImage.SymbolConfiguration(hierarchicalColor: .controlAccentColor))
-        }
+        let config = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+            .applying(NSImage.SymbolConfiguration(hierarchicalColor: .controlAccentColor))
         return NSImage(systemSymbolName: mode.symbolName, accessibilityDescription: mode.title)?
             .withSymbolConfiguration(config)
     }

@@ -15,9 +15,7 @@ extension PlayerWindowController {
         layout.tableView.reloadData()
         restoredPlaybackPosition = max(position, 0)
         loadLyrics(for: track, highlightAt: restoredPlaybackPosition)
-        DispatchQueue.main.async { [weak self] in
-            self?.syncPlaybackPreview(at: position, updateLyrics: false)
-        }
+        syncPlaybackPreview(at: position, updateLyrics: false)
 
         layout.setPlayButtonShowsPause(false)
         layout.statusLabel.stringValue = "已恢复上次选中的歌曲：\(track.displayName)"
@@ -443,10 +441,11 @@ extension PlayerWindowController {
             return
         }
 
-        let current = playbackController.currentTime() ?? 0
-        let duration = playbackController.duration() ?? 0
-
-        if duration.isFinite, duration > 0, current.isFinite {
+        if let duration = playbackController.duration(),
+           duration.isFinite,
+           duration > 0,
+           let current = playbackController.currentTime(),
+           current.isFinite {
             applyPlaybackDisplayTime(current, duration: duration, forceScroll: false)
 
             if playbackController.isPlaying {
@@ -456,9 +455,29 @@ extension PlayerWindowController {
                     saveCurrentPlaybackState()
                 }
             }
-        } else {
-            updateTimeLabel(current: 0, duration: 0)
+            return
         }
+
+        refreshIdlePlaybackDisplay(forceScroll: false)
+    }
+
+    /// 未加载 AVPlayer 时，用已选曲目时长与恢复/滑块位置刷新进度与时间标签。
+    func refreshIdlePlaybackDisplay(forceScroll: Bool = false) {
+        guard currentTrackIndex != nil,
+              let duration = resolvedPlaybackDuration(),
+              duration.isFinite,
+              duration > 0 else {
+            if currentTrackIndex == nil {
+                updateTimeLabel(current: 0, duration: 0)
+            }
+            return
+        }
+
+        let previewTime = min(
+            max(restoredPlaybackPosition ?? currentSliderPreviewTime(), 0),
+            duration
+        )
+        applyPlaybackDisplayTime(previewTime, duration: duration, forceScroll: forceScroll)
     }
 
     func saveCurrentPlaybackState(position: TimeInterval? = nil) {
