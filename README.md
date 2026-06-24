@@ -4,28 +4,37 @@
 
 ## 功能
 
+### 播放与列表
+
 - 选择本地音乐文件夹；**多次选择不同文件夹时，曲目累积到总播放列表**（同文件内容只保留一条）。
-- 扫描并显示本地音乐列表。
-- 播放、暂停、上一首、下一首。
-- 拖动进度条跳转播放位置。
-- 读取同目录同名 `.lrc` 歌词。
-- 按播放进度高亮当前歌词。
-- 歌词平滑滚动。
-- 多语种歌词播放时原文和译文同时显示，顺序固定为原文在上、中文译文在下；高亮默认落在中文译文行。
-- 记住上次选择的音乐目录。
-- FLAC 播放时自动使用同名 `.m4a` 或生成 ALAC 缓存，以保证手动跳转更准确。
-- 支持通过网易云或 QQ 音乐搜索并下载缺失的同名 `.lrc` 歌词。
-- 下载当前歌词时支持候选结果预览和手动选择。
-- 日语等多语种歌曲会尽量按同一时间戳交错输出原文和译文；网易云如果返回英文译文，也会继续追加英文译文。
-- 网易云和 QQ 音乐 Cookie 分别保存到本机私有配置文件。
-- 本地 SQLite 数据库索引音乐库与曲目（ID3 元数据、是否有歌词）。
-- 歌曲列表搜索（歌名、歌手、专辑）。
-- 刷新（⌘R）增量同步**所有已注册文件夹**并更新总播放列表。
-- **设置**（⌘,）：管理已注册音乐文件夹（添加/移除）、歌词 Cookie 与下载、菜单栏歌词选项。
-- 记住上次音乐库、曲目与播放进度；再次打开时恢复选中状态和进度位置，不自动播放。
-- 标准 macOS 菜单栏与常用快捷键（⌘Q 退出、空格播放/暂停等）。
-- 搜索框支持过滤歌曲；启动时不自动聚焦，点击其他区域失焦。
-- 歌曲列表中**正在播放**的曲目以加粗、主题色与浅蓝行背景标识；清空搜索或点击其他区域后仍保持，并自动滚到可见位置。
+- 扫描并显示本地音乐列表（双行：歌名 + 歌手/专辑；支持「歌手 - 歌名」拆分）。
+- 播放、暂停、上一首、下一首；**播放模式**：顺序（末首回第一首）、单曲循环、随机（偏好持久化）。
+- 拖动进度条跳转播放位置；底部 SF Symbol 播放控制与自定义进度条。
+- 列表顶栏显示 **歌曲 · N**，**定位正在播放**（`scope`）可滚动到当前曲；搜索过滤时会先清空搜索。
+- 歌曲列表搜索（歌名、歌手、专辑）；悬停高亮；播放行主题色浅底标识。
+- 记住上次音乐库、曲目、播放进度与**主窗口位置/大小**；再次打开时恢复选中与进度，**不自动播放**。
+
+### 歌词
+
+- 读取同目录同名 `.lrc` 歌词；按播放进度高亮当前行并平滑滚动。
+- 非当前行按距离渐变淡出；首尾行可滚到视口正中。
+- 多语种歌词原文与译文同时显示（原文在上、中文译文在下）；高亮默认落在中文译文行。
+
+### 歌词下载
+
+- 网易云 / QQ 音乐搜索并下载缺失的同名 `.lrc`（需各自 Cookie）。
+- 下载当前歌词：双源候选预览与手动选择；补全缺失歌词：按匹配分自动尝试。
+- Cookie 保存于本机私有配置文件（非 Keychain）。
+
+### 界面与其它
+
+- **设置**（⌘,）：音乐库（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词。
+- 主窗口 **NSToolbar**：选择文件夹、刷新、搜索（详见 [doc/ui.md](./doc/ui.md) 工具栏分段说明）。
+- 毛玻璃背景、透明标题栏；列表/歌词空状态 SF Symbol 占位。
+- **菜单栏歌词**：关窗后后台继续显示当前行（可配置宽度与图标）。
+- 标准 macOS 菜单栏与常用快捷键（⌘Q、空格播放/暂停等）。
+- FLAC 播放优先同名 `.m4a`，否则 `ffmpeg` 转 ALAC 缓存以保证 seek 准确。
+- 本地 SQLite 索引音乐库与曲目（ID3、歌词有无、播放历史等）。
 
 ## 构建
 
@@ -66,15 +75,17 @@ open /Users/sakuzeng/improve/coding/mac_app/local-lrc-player/build/LocalLrcPlaye
 4. 可继续选择其他文件夹（或 **⌘,** 打开设置添加），歌曲会追加到同一总列表（内容相同的副本自动去重）。
 5. **双击**左侧歌曲开始播放。
 6. **单击**选中某行；若选中的是另一首，按**空格**或点「播放」会切换到该曲；若选中的是正在播放的同一首，则**暂停/继续**。
-7. 可用搜索框过滤歌曲（点击列表或歌词区可让搜索框失焦）；新增音乐或歌词后点「刷新」即可同步全部已注册文件夹。不再需要的文件夹可在 **⌘,** 设置中移除（仅删索引，不删磁盘文件）。
+7. 底部播放区可切换**播放模式**（顺序 / 单曲循环 / 随机）；顺序模式下末首播完会从第一首继续。
+8. 列表顶栏 **scope** 按钮可定位到正在播放的歌曲（若被搜索过滤会先清空搜索）。
+9. 可用搜索框过滤歌曲（点击列表或歌词区可让搜索框失焦）；新增音乐或歌词后点「刷新」即可同步全部已注册文件夹。不再需要的文件夹可在 **⌘,** 设置中移除（仅删索引，不删磁盘文件）。
 
-列表行样式：
+列表行样式（双行：歌名 + 歌手/专辑）：
 
 | 状态 | 外观 |
 |---|---|
-| 仅选中（未播放） | **浅灰底** + 中等字重 |
-| 正在播放（未选中） | **主题色浅底** + 加粗主题色歌名 |
-| 选中且正在播放 | **更深主题色浅底** + **左侧竖条** + 加粗主题色歌名 |
+| 仅选中（未播放） | 悬停浅灰底；歌名中等字重 |
+| 正在播放 | **主题色浅底** + 歌名加粗 |
+| 选中且正在播放 | 同上，以播放样式为主 |
 
 常用快捷键：
 
@@ -102,7 +113,7 @@ App 数据保存在 `~/Library/Application Support/LocalLrcPlayer/`：
 
 歌词和音频仍以你选择的音乐文件夹内文件为准（同名 `.lrc`）；数据库只是索引与历史，不是第二份歌词。
 
-数据库表结构、主键/外键与读写流程见 [doc/database.md](./doc/database.md)。
+数据库表结构、主键/外键与读写流程见 [doc/database.md](./doc/database.md)。主窗口 UI 与工具栏约定见 [doc/ui.md](./doc/ui.md)。
 
 ## 下载歌词
 
@@ -192,36 +203,32 @@ Cookie 保存位置：
 
 ```text
 Sources/LocalLrcPlayer/
-  AppDatabase.swift             SQLite 连接与 schema 迁移
-  LibraryRepository.swift       音乐库 CRUD、播放状态
-  TrackRepository.swift         曲目增量 sync 与查询
+  AppDatabase.swift             SQLite 连接与 schema 迁移（当前 v3）
+  PlaybackMode.swift            播放模式枚举
+  LibraryRepository.swift       音乐库 CRUD
+  TrackRepository.swift         曲目增量 sync、总列表查询
+  PlaylistRepository.swift      总播放列表
+  PlayerStateRepository.swift   播放进度、窗口 frame、播放模式
+  AppSettingsRepository.swift   菜单栏歌词等 UI 设置
   PlayHistoryRepository.swift   播放历史
-  LyricLogRepository.swift      歌词下载审计
-  TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
-  DatabaseModels.swift          数据库记录模型
-  AppDelegate.swift             应用生命周期、About/Help
-  AppMenuBuilder.swift          标准 macOS 菜单栏
-  main.swift                    App 启动入口
-  PlayerWindowController.swift  主窗口：绑定、Cookie、快捷键、焦点
-  PlayerWindowController_Library.swift      音乐库加载与刷新
-  PlayerWindowController_Playback.swift     播放、进度、歌词显示
-  PlayerWindowController_LyricsDownload.swift  歌词下载与补全
-  Result+Success.swift          Result 便捷扩展
-  PlayerWindowLayout.swift      主窗口 UI 布局
-  TrackListDataSource.swift     左侧歌曲列表
-  PlaybackController.swift      AVPlayer 播放封装
-  PlaybackAssetResolver.swift   FLAC 播放资源解析和 ALAC 缓存生成
-  LyricsView.swift              歌词显示、高亮、滚动
+  LyricLogRepository.swift     歌词下载审计
+  SettingsWindowController.swift  设置窗口（⌘,）
+  PlayerWindowToolbar.swift     主窗口 NSToolbar
+  MenuBarLyricsController.swift 菜单栏歌词
+  UIChrome.swift                空状态、Symbol 工具
+  PlayerWindowController.swift  主窗口协调
+  PlayerWindowController_Library.swift
+  PlayerWindowController_Playback.swift
+  PlayerWindowController_LyricsDownload.swift
+  PlayerWindowLayout.swift      主窗口布局（列表顶栏、播放区）
+  TrackListDataSource.swift     曲目列表数据源
+  PlaybackController.swift      AVPlayer 封装
+  PlaybackAssetResolver.swift   FLAC → ALAC 缓存
+  LyricsView.swift              歌词显示
   LrcParser.swift               LRC 解析
-  MusicLibrary.swift            音乐目录扫描
-  SeekSlider.swift              进度条拖动状态
-  CookieStore.swift             歌词来源 Cookie 本地保存
-  NetEaseLyricClient.swift      网易云搜索和歌词接口
-  QQMusicLyricClient.swift      QQ 音乐搜索和歌词接口
-  LyricSearchService.swift      歌词搜索、候选评分和下载协调
-  LyricCandidateDialog.swift    候选歌词预览和选择窗口
-  LyricFormatter.swift          原文、译文、英文译文交错输出
-  LyricFileWriter.swift         同名 .lrc 写入
+  SeekSlider.swift              自定义进度条
+  LyricSearchService.swift      歌词搜索与下载
+  …（其余见 HANDOFF.md 完整列表）
 ```
 
 ## 开发
@@ -305,15 +312,19 @@ open build/LocalLrcPlayer.app
 ## 当前限制
 
 - 不读取音频内嵌歌词。
-- 不做封面、播放模式、全局快捷键。
+- 不做专辑封面展示（下载/预览封面见 ROADMAP）。
+- 不做系统级全局快捷键（仅窗口内空格等）。
 - FLAC 第一次播放可能需要等待生成 ALAC 缓存。
-- 目前只支持网易云和 QQ 音乐，不支持酷狗/酷我等其他源。
-- 网易云接口可用性取决于 Cookie 是否有效，以及网易云侧接口策略。
-- QQ 音乐接口使用本机保存的 QQ 音乐 Cookie，请确认 Cookie 仍有效。
-- 英文译文只有在网易云接口返回对应字段时才会写入；没有英文译文时只输出原文和已有译文。
+- 目前只支持网易云和 QQ 音乐歌词源。
+- 网易云 / QQ 音乐接口可用性取决于 Cookie 是否有效。
+- 英文译文仅在网易云返回对应字段时写入。
 
 ## 开发记录
 
-- 已完成的变更记录在 `CHANGELOG.md`。
-- 后续计划和想法记录在 `ROADMAP.md`。
-- 跨 AI 工具或开发者的开场提示词和交接模板记录在 `HANDOFF.md`。
+| 文件 | 用途 |
+|---|---|
+| `CHANGELOG.md` | 已完成的变更（按日期） |
+| `ROADMAP.md` | 后续计划与已知 bug |
+| `HANDOFF.md` | 跨工具交接与验证清单 |
+| `doc/database.md` | SQLite schema 与读写流程 |
+| `doc/ui.md` | 主窗口布局、工具栏分段经验 |

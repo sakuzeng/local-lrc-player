@@ -4,6 +4,8 @@
 
 ## 2026-06-23
 
+本日主要交付：主窗口 UI 美化（工具栏/毛玻璃/播放区/歌词/列表）、设置窗口、空状态与窗口记忆、**播放模式**（schema v3）、**列表顶栏定位**、`doc/ui.md` 工具栏经验文档。
+
 ### Added
 
 - **设置窗口**（`SettingsWindowController`）：应用菜单 **设置…** 或 **⌘,** 打开；收纳音乐库管理、歌词 Cookie/下载、菜单栏歌词配置。
@@ -51,7 +53,7 @@
 ### Verified
 
 - `./build.sh` 构建成功。
-- `./test.sh` 全部通过。
+- `./test.sh` 全部通过（含 `PlayerStateRepositoryTests`）。
 
 ## 2026-06-15
 

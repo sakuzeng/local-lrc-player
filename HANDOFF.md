@@ -22,7 +22,7 @@
 当前已实现功能：
 
 - 选择本地音乐文件夹可**多次累积**到总播放列表；同文件内容（SHA256）自动去重。
-- SQLite schema v1：完整表结构一次性初始化（含 `app_settings`、播放列表、内容去重等）；播放进度存 `player_state`。
+- SQLite schema **v1** 基线 + **v2** 主窗口 frame + **v3** `playback_mode`；播放进度与模式存 `player_state`。
 - **菜单栏歌词**：`NSStatusItem` 显示当前行；短句静止、长句跑马灯；宽度读 `app_settings` 全局设置；关窗不退出，后台继续更新。
 - **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕，并滚回顶部显示「音乐库」。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
@@ -32,8 +32,8 @@
 - **曲目列表**：双行单元格（歌名 + 歌手/专辑）；`歌手 - 歌名` 解析；`TrackTableView` 集中管理悬停；播放行主题色浅底（`TrackListDataSource`）。
 - **空状态**：列表/歌词无内容时 SF Symbol 占位（`UIChrome` / `EmptyStateView`）；主窗口仍为平铺毛玻璃布局。
 - 启动时恢复上次主窗口位置与大小（`player_state.window_*`）；无记录时居中显示。
-- **播放模式**：顺序 / 单曲循环 / 随机；播放区按钮循环切换，偏好存 `player_state.playback_mode`（schema v3）；随机模式用 `shuffleHistory` 支持上一首回退；顺序模式末首回第一首。
-- **列表顶栏**：`歌曲 · N` + 定位正在播放（`scope`）；`listNavigationStack` 可扩展（日后播放列表名可替换左侧标题）。详见 `doc/ui.md`。
+- **播放模式**：顺序 / 单曲循环 / 随机；三种模式按钮均主题色高亮；偏好存 `player_state.playback_mode`（schema v3）；随机 `shuffleHistory`；顺序末首回第一首。
+- **列表顶栏**：`歌曲 · N` + 定位正在播放（`scope`）；`listNavigationStack` 可扩展（左侧标题日后可换播放列表名）。详见 `doc/ui.md`。
 - 菜单栏项 / 「视图」菜单可配置菜单栏歌词；设置窗口亦可配置并写入 `app_settings`。
 - 启动时 sync 所有已注册库；⌘R 刷新全部库。
 - 数据库记住上次曲目与播放进度；再次打开时恢复选中状态和进度位置，**不自动播放**。
@@ -74,8 +74,7 @@
 - **歌词区美化**（2026-06-23）：`LyricsView` 按行距渐变字号/透明度、换行平滑过渡；`textContainerInset` 动态半屏留白修复末行高亮贴底；未使用边缘毛玻璃遮罩。
 - **曲目列表**（2026-06-23）：`TrackTableCellView` 双行布局；`歌手 - 歌名` 拆分；悬停由 `TrackTableView` + `TrackListDataSource.hoveredRow` 统一管理，修复滚动时灰底残影。
 - **空状态 + 窗口**（2026-06-23）：`EmptyStateView` 图标占位；主窗口保持平铺毛玻璃（卡片/侧栏方案已回退）；`player_state` v2 记忆主窗口 frame。
-- **播放模式**（2026-06-23）：`PlaybackMode` + 播放区模式按钮；`playerItemDidEnd` / `playNext` / `playPrevious` 按模式分支；`player_state` v3 `playback_mode` 持久化；顺序模式末首回第一首。
-- **列表顶栏 + 定位**（2026-06-23）：`listHeaderBar` / `listNavigationStack`；定位按钮放列表上方（非工具栏）。工具栏曾尝试合并/拆分 pill，结论见 `doc/ui.md`——列表导航类按钮不宜用相邻 `NSToolbarItem.image`。
+- **播放模式 + 定位**（2026-06-23）：`PlaybackMode`、`listHeaderBar`；定位放列表顶栏（工具栏不宜拆 pill，见 `doc/ui.md`）；顺序模式按钮高亮已修复。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
@@ -97,15 +96,17 @@
 
 ```text
 Sources/LocalLrcPlayer/
-  AppDatabase.swift             SQLite 连接与 schema 迁移
+  AppDatabase.swift             SQLite 连接与 schema 迁移（v3）
+  PlaybackMode.swift            播放模式
   TrackContentHasher.swift      文件 SHA256
   PlaylistRepository.swift      总播放列表
-  PlayerStateRepository.swift   全局播放进度
+  PlayerStateRepository.swift   播放进度、窗口 frame、播放模式
   LibraryRepository.swift       registerLibrary / deleteLibrary / allLibraries
   TrackRepository.swift         sync、removeLibrary（内容去重）
   AppSettingsRepository.swift   菜单栏歌词等 UI 设置（app_settings）
   SettingsWindowController.swift  设置窗口（⌘,）：音乐库/歌词/菜单栏
   PlayerWindowToolbar.swift     主窗口 NSToolbar
+  UIChrome.swift                空状态、Symbol 工具
   MenuBarLyricsController.swift 系统菜单栏歌词与快捷菜单
   MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
   LyricLogRepository.swift      歌词下载审计
@@ -148,7 +149,7 @@ Sources/LocalLrcPlayer/
 将下面这段作为新工具的开场提示词：
 
 ```text
-请先阅读这个项目的 README.md、CHANGELOG.md、ROADMAP.md、HANDOFF.md 和 doc/database.md（若涉及数据库），然后再查看 Sources/LocalLrcPlayer 下的代码。
+请先阅读这个项目的 README.md、CHANGELOG.md、ROADMAP.md、HANDOFF.md，以及 doc/database.md（数据库）和 doc/ui.md（主窗口 UI），然后再查看 Sources/LocalLrcPlayer 下的代码。
 
 项目路径：
 /Users/sakuzeng/improve/coding/mac_app/local-lrc-player
@@ -219,7 +220,7 @@ Sources/LocalLrcPlayer/
 - 当前真实功能和使用方式写入 `README.md`。
 - 已完成的修改写入 `CHANGELOG.md`。
 - 之后要做的功能、已知但未修的 bug 写入 `ROADMAP.md`。
-- SQLite 表结构、主键/外键、读写流程写入 `doc/database.md`；索引见 `doc/README.md`。
+- SQLite 表结构、主键/外键、读写流程写入 `doc/database.md`；主窗口 UI 与工具栏约定写入 `doc/ui.md`；索引见 `doc/README.md`。
 - 跨工具协作流程、开场提示词、交接模板写入 `HANDOFF.md`。
 - 修复 bug 后，将对应条目从 `ROADMAP.md` 的 `Known Bugs` 移到 `CHANGELOG.md` 的 `Fixed`。
 
