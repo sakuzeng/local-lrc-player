@@ -220,6 +220,7 @@ final class PlayerWindowController: NSWindowController {
 
         if panel.runModal() == .OK, let url = panel.url {
             do {
+                LibraryBookmarkStore.saveBookmark(for: url)
                 let library = try libraryRepository.registerLibrary(at: url)
                 registerAndSyncLibrary(library, restoreLastSession: false)
                 settingsWindowController?.reloadLibraries()

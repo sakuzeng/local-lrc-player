@@ -31,6 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             menuBarLyricsController: menuBarLyrics
         )
         menuBarLyrics.reloadSettingsFromDatabase()
+        controller.syncMenuBarLyrics()
+        DispatchQueue.main.async {
+            menuBarLyrics.ensureStatusItemVisible()
+            controller.syncMenuBarLyrics()
+        }
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -48,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        LibraryBookmarkStore.stopAll()
         playerWindowController?.saveSession()
     }
 

@@ -63,6 +63,7 @@ final class LibraryRepository {
 
     @discardableResult
     func registerLibrary(at url: URL) throws -> LibraryRecord {
+        LibraryBookmarkStore.saveBookmark(for: url)
         let standardizedPath = url.standardizedFileURL.path
         let displayName = url.lastPathComponent
 

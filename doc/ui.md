@@ -104,6 +104,22 @@
 
 ---
 
+## 菜单栏歌词（`MenuBarLyricsController`）
+
+相关代码：`MenuBarLyricsController.swift`、`MenuBarLyricsStatusImage.swift`、`MenuBarStatusItemVisibility.swift`、`AppSettingsRepository`（`menu_bar_lyrics_max_width` 等为**最大宽度**）。
+
+| 行为 | 说明 |
+|---|---|
+| 显示 | macOS 26 使用 `NSStatusItem` + `button.image` 位图（白字）；短句在 pill 内**居中**；宽度随内容收缩，不超过设置上限 |
+| 长句 | 播放中自左向右滚动，**滚到行尾停下**；换行后重新从行首开始；暂停时显示截断静态文本 |
+| 菜单 | `statusItem.menu` 原生弹出（避免 `popUp` 顶部 `^`）；`NSAppearance.aqua` 浅色菜单 |
+| 设置 | 开关 / 最大宽度（120·140·160 或 80–400 自定义）/ 音符图标 → `app_settings` |
+| 权限 | 不修改系统设置；若不可见，`MenuBarVisibilityGuide` 提示用户在「系统设置 → 菜单栏」打开本应用 |
+
+音乐库若在「下载」等受保护目录，见 `LibraryBookmarkStore`（选择文件夹时写入 Security-Scoped Bookmark）。
+
+---
+
 ## 维护约定
 
 - 改工具栏项顺序或新增工具栏控件时，先对照本文 **NSToolbar** 一节，避免破坏两段 pill 布局。

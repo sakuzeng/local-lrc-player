@@ -20,6 +20,7 @@ extension PlayerWindowController {
         layout.setPlayButtonShowsPause(false)
         layout.statusLabel.stringValue = "已恢复上次选中的歌曲：\(track.displayName)"
         updateControlState()
+        syncMenuBarLyrics(at: restoredPlaybackPosition)
     }
 
     func playTrack(

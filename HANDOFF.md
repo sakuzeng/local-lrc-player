@@ -4,7 +4,7 @@
 
 ## Current State
 
-更新时间：2026-06-23
+更新时间：2026-06-25
 
 项目路径：
 
@@ -23,7 +23,7 @@
 
 - 选择本地音乐文件夹可**多次累积**到总播放列表；同文件内容（SHA256）自动去重。
 - SQLite schema **v1** 基线 + **v2** 主窗口 frame + **v3** `playback_mode`；播放进度与模式存 `player_state`。
-- **菜单栏歌词**：`NSStatusItem` 显示当前行；短句静止、长句跑马灯；宽度读 `app_settings` 全局设置；关窗不退出，后台继续更新。
+- **菜单栏歌词**：`NSStatusItem` + 位图渲染（`MenuBarLyricsStatusImage`）；短句居中、宽度随内容收缩（上限见设置，默认 160 pt）；长句播放时滚至行尾停下；白字；下拉菜单浅色；原生 `statusItem.menu`（无 `^`）；macOS 26 需系统设置允许并在 v2 bundle 下重新授权。
 - **设置窗口**（⌘,）：音乐库列表（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词配置；打开时居中到主窗口所在屏幕，并滚回顶部显示「音乐库」。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索；Cookie/歌词工具已移入设置。
 - 主窗口**毛玻璃质感**：透明标题栏 + unified 工具栏 + `NSVisualEffectView` 背景；列表/歌词无边框。
@@ -77,6 +77,7 @@
 - **播放模式 + 定位**（2026-06-23）：`PlaybackMode`、`listHeaderBar`；定位放列表顶栏（工具栏不宜拆 pill，见 `doc/ui.md`）。
 - **播放区底栏**（2026-06-25）：`transportBar` / `progressBar` 分列；传输三键 + 模式 pill 视觉统一；排序改为库顺序 + 显示名自然序（`PlaylistRepository.reorderMasterPlaylist`）。
 - **启动时间预览**（2026-06-25）：未播放时 `refreshIdlePlaybackDisplay` 用 `resolvedPlaybackDuration` + `restoredPlaybackPosition` 刷新时间标签，避免 `tick()` 重置为 `00:00 / 00:00`。
+- **菜单栏歌词**（2026-06-25）：macOS 26 上不显示 → 位图 `button.image`、`MenuBarStatusItemVisibility` 清 VisibleCC、启动后补 `syncMenuBarLyrics`；动态 max 宽度；滚至末尾停；`LibraryBookmarkStore` 减少 Downloads 重复授权；bundle `local.lrc.player.v2`。
 - `main.swift` 已拆分成多个职责模块，主协调逻辑在 `PlayerWindowController.swift`。
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
@@ -111,7 +112,11 @@ Sources/LocalLrcPlayer/
   PlayerWindowToolbar.swift     主窗口 NSToolbar
   UIChrome.swift                空状态、Symbol 工具
   MenuBarLyricsController.swift 系统菜单栏歌词与快捷菜单
-  MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
+  MenuBarLyricsStatusImage.swift  菜单栏歌词位图渲染（白字/居中/滚动偏移）
+  MenuBarStatusItemVisibility.swift  NSStatusItem 可见性恢复（含 VisibleCC）
+  MenuBarVisibilityGuide.swift    macOS 26 菜单栏权限引导
+  LibraryBookmarkStore.swift      音乐库 Security-Scoped Bookmark
+  MenuBarLyricsView.swift       （遗留）自定义 NSView 绘制，当前未用于菜单栏显示
   LyricLogRepository.swift      歌词下载审计
   TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
   DatabaseModels.swift          数据库记录模型

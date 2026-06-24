@@ -10,8 +10,12 @@ extension PlayerWindowController {
             }
 
             activeLibrary = try libraryRepository.activeLibrary() ?? libraries.last
+            LibraryBookmarkStore.activateLibraries(libraries)
             layout.statusLabel.stringValue = "正在同步音乐库…"
             let summary = try trackRepository.syncAll(libraries: libraries)
+            for library in libraries {
+                LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
+            }
             reloadMasterPlaylist(restoreLastSession: restoreLastSession, preserveTrackURL: nil)
             layout.statusLabel.stringValue = statusSummary(
                 total: summary.total,
@@ -34,10 +38,12 @@ extension PlayerWindowController {
     ) {
         do {
             activeLibrary = library
+            LibraryBookmarkStore.activateAccess(for: library.url)
             layout.statusLabel.stringValue = "正在同步音乐库…"
 
             let summary = try trackRepository.sync(libraryId: library.id, folderURL: library.url)
             try libraryRepository.markScanned(libraryId: library.id)
+            LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
 
             reloadMasterPlaylist(restoreLastSession: restoreLastSession, preserveTrackURL: preserveTrackURL)
 
@@ -148,9 +154,11 @@ extension PlayerWindowController {
             }
 
             layout.statusLabel.stringValue = "正在刷新全部音乐库…"
+            LibraryBookmarkStore.activateLibraries(libraries)
             let summary = try trackRepository.syncAll(libraries: libraries)
             for library in libraries {
                 try libraryRepository.markScanned(libraryId: library.id)
+                LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
             }
             reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: preserveTrackURL)
             layout.statusLabel.stringValue = statusSummary(

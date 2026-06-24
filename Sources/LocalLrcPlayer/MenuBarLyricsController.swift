@@ -92,10 +92,20 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     private weak var playerWindowController: PlayerWindowController?
     private let settingsRepository: AppSettingsRepository
     private var statusItem: NSStatusItem?
-    private let lyricsView = MenuBarLyricsView()
+    private var statusMenu: NSMenu?
     private var currentSettings = AppSettings.defaults
     private var lastDisplayedText = ""
     private var lastActiveLineIndex: Int?
+    private var scrollTimer: Timer?
+    private var scrollOffsetX: CGFloat = 0
+    private var scrollTextSize = NSSize.zero
+    private var scrollNeedsMarquee = false
+    private var scrollStartPauseRemaining = 0
+    private var scrollReachedEnd = false
+    private var isScrollingEnabled = false
+    private var configureAttempt = 0
+    private var visibilityCheckScheduled = false
+    private var visibilityRecoveryAttempt = 0
 
     init(
         playerWindowController: PlayerWindowController,
@@ -110,10 +120,17 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidBecomeActive),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        stopScrollTimer()
     }
 
     func reloadSettingsFromDatabase() {
@@ -131,10 +148,17 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             return
         }
 
-        lyricsView.isScrollingEnabled = isPlaying
+        setScrollingEnabled(isPlaying)
 
-        guard let index = LrcParser.activeLineIndex(for: time, in: lines),
-              lines.indices.contains(index) else {
+        let index: Int
+        if let activeIndex = LrcParser.activeLineIndex(for: time, in: lines),
+           lines.indices.contains(activeIndex) {
+            index = activeIndex
+        } else if let fallbackIndex = Self.fallbackLineIndex(for: time, in: lines) {
+            index = fallbackIndex
+        } else if !lastDisplayedText.isEmpty {
+            return
+        } else {
             return
         }
 
@@ -148,7 +172,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         guard currentSettings.menuBarLyricsEnabled, statusItem != nil else {
             return
         }
-        lyricsView.isScrollingEnabled = false
+        setScrollingEnabled(false)
         lastActiveLineIndex = nil
         setDisplayText(text, resetScroll: true)
     }
@@ -157,7 +181,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         guard currentSettings.menuBarLyricsEnabled, statusItem != nil else {
             return
         }
-        lyricsView.isScrollingEnabled = false
+        setScrollingEnabled(false)
         lastActiveLineIndex = nil
         setDisplayText("♪ \(title)", resetScroll: true)
     }
@@ -169,13 +193,14 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     func makeSettingsMenu(delegate: NSMenuDelegate?) -> NSMenu {
         let menu = NSMenu()
         menu.delegate = delegate ?? self
+        menu.appearance = NSAppearance(named: .aqua)
         MenuBarLyricsSettingsMenu.appendSettings(to: menu, controller: self)
         refreshMenuState(in: menu)
         return menu
     }
 
     func refreshOpenMenus() {
-        guard let menu = statusItem?.menu else {
+        guard let menu = statusMenu else {
             return
         }
         refreshMenuState(in: menu)
@@ -256,17 +281,116 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     @objc private func screenConfigurationChanged() {
         applyLayout()
         refreshOpenMenus()
+        ensureStatusItemVisible()
+    }
+
+    @objc private func applicationDidBecomeActive() {
+        ensureStatusItemVisible()
+    }
+
+    func ensureStatusItemVisible() {
+        guard currentSettings.menuBarLyricsEnabled else {
+            return
+        }
+
+        if statusItem == nil {
+            enable(with: currentSettings)
+            return
+        }
+
+        MenuBarStatusItemVisibility.install(statusItem!)
+        applyLayout()
+        playerWindowController?.syncMenuBarLyrics()
+    }
+
+    private func attachStatusMenu(to item: NSStatusItem) {
+        if statusMenu == nil {
+            statusMenu = makeStatusMenu()
+        }
+        item.menu = statusMenu
+        item.button?.target = nil
+        item.button?.action = nil
+    }
+
+    private func createStatusItem() -> NSStatusItem {
+        MenuBarStatusItemVisibility.clearPersistedVisibility()
+
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusMenu = makeStatusMenu()
+        attachStatusMenu(to: item)
+        MenuBarStatusItemVisibility.install(item)
+
+        if let button = item.button {
+            button.imagePosition = .imageOnly
+            button.title = ""
+            let maxWidth = max(effectiveMaxWidth(), NSStatusItem.squareLength)
+            let width = MenuBarLyricsStatusImage.preferredContentWidth(
+                text: "Local LRC Player",
+                showIcon: currentSettings.menuBarLyricsShowIcon,
+                maxWidth: maxWidth,
+                useFullWidth: false
+            )
+            item.length = width
+            button.image = MenuBarLyricsStatusImage.make(
+                text: "Local LRC Player",
+                width: width,
+                showIcon: currentSettings.menuBarLyricsShowIcon
+            )
+        }
+
+        return item
     }
 
     private func enable(with settings: AppSettings) {
         currentSettings = settings
+        visibilityRecoveryAttempt = 0
+
+        if let button = statusItem?.button, !button.subviews.isEmpty {
+            let savedText = lastDisplayedText
+            disable()
+            lastDisplayedText = savedText
+        }
 
         if statusItem == nil {
-            let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            item.menu = makeStatusMenu()
-            statusItem = item
-            item.button?.addSubview(lyricsView)
+            statusItem = createStatusItem()
+        } else if statusMenu == nil {
+            statusMenu = makeStatusMenu()
         }
+        if let statusItem {
+            attachStatusMenu(to: statusItem)
+        }
+
+        MenuBarStatusItemVisibility.install(statusItem!)
+        scheduleStatusItemConfiguration(resetAttempts: true)
+    }
+
+    private func scheduleStatusItemConfiguration(resetAttempts: Bool) {
+        if resetAttempts {
+            configureAttempt = 0
+            visibilityCheckScheduled = false
+        }
+        attemptConfigureStatusItem()
+    }
+
+    private func attemptConfigureStatusItem() {
+        guard currentSettings.menuBarLyricsEnabled, let item = statusItem else {
+            return
+        }
+
+        guard item.button != nil else {
+            configureAttempt += 1
+            if configureAttempt < 30 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.attemptConfigureStatusItem()
+                }
+            } else {
+                recoverHiddenStatusItem()
+            }
+            return
+        }
+
+        MenuBarStatusItemVisibility.install(item)
+        attachStatusMenu(to: item)
 
         applyLayout()
         if lastDisplayedText.isEmpty {
@@ -274,19 +398,74 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         } else {
             setDisplayText(lastDisplayedText, resetScroll: true)
         }
+        playerWindowController?.syncMenuBarLyrics()
+        publishDiagnostics(for: item)
+        scheduleVisibilityVerification()
+    }
+
+    private func publishDiagnostics(for item: NSStatusItem) {
+        guard let controller = playerWindowController else {
+            return
+        }
+
+        let button = item.button
+        let screenAttached = button?.window?.screen != nil
+        let hasImage = button?.image != nil
+        guard !screenAttached || !hasImage else {
+            return
+        }
+
+        let summary = "菜单栏: 可见=\(item.isVisible) 屏幕=\(screenAttached ? "已连接" : "未连接") 图像=\(hasImage ? "有" : "无")"
+        controller.layout.statusLabel.stringValue = summary
+    }
+
+    private func scheduleVisibilityVerification() {
+        guard !visibilityCheckScheduled else {
+            return
+        }
+        visibilityCheckScheduled = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            guard let self else {
+                return
+            }
+            self.visibilityCheckScheduled = false
+            guard self.currentSettings.menuBarLyricsEnabled else {
+                return
+            }
+            if MenuBarVisibilityGuide.isStatusItemLikelyHidden(self.statusItem) {
+                self.recoverHiddenStatusItem()
+            }
+        }
+    }
+
+    private func recoverHiddenStatusItem() {
+        guard visibilityRecoveryAttempt < 2 else {
+            MenuBarVisibilityGuide.showIfLikelyBlocked(force: true)
+            return
+        }
+        visibilityRecoveryAttempt += 1
+
+        let savedText = lastDisplayedText
+        disable()
+        lastDisplayedText = savedText
+        enable(with: currentSettings)
     }
 
     private func disable() {
+        stopScrollTimer()
         if let statusItem {
-            lyricsView.removeFromSuperview()
             NSStatusBar.system.removeStatusItem(statusItem)
         }
         statusItem = nil
+        statusMenu = nil
+        MenuBarStatusItemVisibility.clearPersistedVisibility()
     }
 
     private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
         menu.delegate = self
+        menu.appearance = NSAppearance(named: .aqua)
 
         let showWindowItem = NSMenuItem(
             title: "显示主窗口",
@@ -334,22 +513,165 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     }
 
     private func applyLayout() {
-        guard currentSettings.menuBarLyricsEnabled, statusItem != nil else {
+        guard currentSettings.menuBarLyricsEnabled, let item = statusItem, item.button != nil else {
             return
         }
 
-        let width = effectiveMaxWidth()
-        lyricsView.configure(maxWidth: width, showIcon: currentSettings.menuBarLyricsShowIcon)
-        statusItem?.length = width
-        lyricsView.frame = MenuBarLyricsView.makeFrame(width: width)
-        statusItem?.button?.frame.size = lyricsView.frame.size
-        lyricsView.needsLayout = true
+        MenuBarStatusItemVisibility.install(item)
+        refreshButtonTitle(resetScroll: false)
     }
 
     private func setDisplayText(_ text: String, resetScroll: Bool) {
         lastDisplayedText = text
-        lyricsView.setText(text, resetScroll: resetScroll)
         applyLayout()
+        refreshButtonTitle(resetScroll: resetScroll)
+    }
+
+    private func setScrollingEnabled(_ enabled: Bool) {
+        isScrollingEnabled = enabled
+        if enabled {
+            refreshButtonTitle(resetScroll: false)
+            updateScrollTimer()
+        } else {
+            stopScrollTimer()
+            scrollOffsetX = 0
+            scrollReachedEnd = false
+            refreshButtonTitle(resetScroll: false)
+        }
+    }
+
+    private func refreshButtonTitle(resetScroll: Bool) {
+        guard let button = statusItem?.button, let item = statusItem else {
+            return
+        }
+
+        let maxWidth = max(effectiveMaxWidth(), NSStatusItem.squareLength)
+        let font = NSFont.systemFont(ofSize: 13)
+        scrollTextSize = (lastDisplayedText as NSString).size(withAttributes: [.font: font])
+        let fullTextWidth = textAreaWidth(for: maxWidth)
+        scrollNeedsMarquee = scrollTextSize.width > fullTextWidth + 0.5
+
+        if resetScroll || !scrollNeedsMarquee {
+            scrollOffsetX = 0
+            scrollStartPauseRemaining = 30
+            scrollReachedEnd = false
+        }
+
+        let displayText: String
+        let textOffsetX: CGFloat
+        let useFullWidth: Bool
+        if scrollNeedsMarquee, isScrollingEnabled || scrollReachedEnd {
+            displayText = lastDisplayedText
+            let maxScroll = max(scrollTextSize.width - fullTextWidth, 0)
+            textOffsetX = scrollReachedEnd ? maxScroll : scrollOffsetX
+            useFullWidth = true
+        } else if scrollNeedsMarquee {
+            displayText = Self.truncatedText(lastDisplayedText, maxWidth: fullTextWidth, font: font)
+            textOffsetX = 0
+            useFullWidth = false
+        } else {
+            displayText = lastDisplayedText
+            textOffsetX = 0
+            useFullWidth = false
+        }
+
+        let width = MenuBarLyricsStatusImage.preferredContentWidth(
+            text: displayText,
+            showIcon: currentSettings.menuBarLyricsShowIcon,
+            maxWidth: maxWidth,
+            useFullWidth: useFullWidth
+        )
+        item.length = width
+
+        button.toolTip = lastDisplayedText.isEmpty ? "Local LRC Player" : lastDisplayedText
+        button.title = ""
+        button.imagePosition = .imageOnly
+        button.image = MenuBarLyricsStatusImage.make(
+            text: displayText,
+            width: width,
+            showIcon: currentSettings.menuBarLyricsShowIcon,
+            textOffsetX: textOffsetX
+        )
+
+        updateScrollTimer()
+    }
+
+    private func textAreaWidth(for totalWidth: CGFloat) -> CGFloat {
+        let iconBlock: CGFloat = currentSettings.menuBarLyricsShowIcon ? 18 : 0
+        return max(totalWidth - iconBlock - 8, 20)
+    }
+
+    private static func truncatedText(_ text: String, maxWidth: CGFloat, font: NSFont) -> String {
+        guard !text.isEmpty else {
+            return ""
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let measured = (text as NSString).size(withAttributes: attributes)
+        if measured.width <= maxWidth {
+            return text
+        }
+
+        var trimmed = text
+        while trimmed.count > 1 {
+            trimmed = String(trimmed.dropLast())
+            let candidate = trimmed + "…"
+            if (candidate as NSString).size(withAttributes: attributes).width <= maxWidth {
+                return candidate
+            }
+        }
+        return "…"
+    }
+
+    private func updateScrollTimer() {
+        if isScrollingEnabled, scrollNeedsMarquee, !scrollReachedEnd {
+            startScrollTimerIfNeeded()
+        } else {
+            stopScrollTimer()
+        }
+    }
+
+    private func startScrollTimerIfNeeded() {
+        guard scrollTimer == nil else {
+            return
+        }
+
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+            self?.advanceScroll()
+        }
+        if let scrollTimer {
+            RunLoop.main.add(scrollTimer, forMode: .common)
+        }
+    }
+
+    private func stopScrollTimer() {
+        scrollTimer?.invalidate()
+        scrollTimer = nil
+    }
+
+    private func advanceScroll() {
+        guard isScrollingEnabled, scrollNeedsMarquee, !scrollReachedEnd, statusItem?.button != nil else {
+            stopScrollTimer()
+            return
+        }
+
+        let textWidth = textAreaWidth(for: max(effectiveMaxWidth(), NSStatusItem.squareLength))
+
+        if scrollStartPauseRemaining > 0 {
+            scrollStartPauseRemaining -= 1
+            refreshButtonTitle(resetScroll: false)
+            return
+        }
+
+        scrollOffsetX += 0.7
+        let maxScroll = max(scrollTextSize.width - textWidth, 0)
+        if scrollOffsetX >= maxScroll {
+            scrollOffsetX = maxScroll
+            scrollReachedEnd = true
+            stopScrollTimer()
+        }
+
+        refreshButtonTitle(resetScroll: false)
     }
 
     private func applyAndPersist(_ update: () throws -> Void) {
@@ -360,5 +682,21 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         } catch {
             playerWindowController?.layout.statusLabel.stringValue = "保存菜单栏歌词设置失败：\(error.localizedDescription)"
         }
+    }
+
+    /// 当前时间尚未进入任何一行时，取最近已过的行；若还在前奏则取第一行。
+    private static func fallbackLineIndex(for time: TimeInterval, in lines: [LrcLine]) -> Int? {
+        guard !lines.isEmpty else {
+            return nil
+        }
+
+        var lastPassed: Int?
+        for index in lines.indices where lines[index].time <= time {
+            lastPassed = index
+        }
+        if let lastPassed {
+            return lastPassed
+        }
+        return 0
     }
 }

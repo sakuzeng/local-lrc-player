@@ -31,7 +31,7 @@
 - **设置**（⌘,）：音乐库（添加/移除文件夹）、歌词 Cookie 与下载、菜单栏歌词。
 - 主窗口 **NSToolbar**：选择文件夹、刷新、搜索（详见 [doc/ui.md](./doc/ui.md) 工具栏分段说明）。
 - 毛玻璃背景、透明标题栏；列表/歌词空状态 SF Symbol 占位。
-- **菜单栏歌词**：关窗后后台继续显示当前行（可配置宽度与图标）。
+- **菜单栏歌词**：关窗后后台继续显示当前行；宽度为**上限**（预设 120/140/160 pt 或自定义 80–400 pt），短句随内容收缩；长句播放时滚至末尾停下；点击弹出浅色控制菜单。macOS 26 需在「系统设置 → 菜单栏」允许本应用显示。
 - 标准 macOS 菜单栏与常用快捷键（⌘Q、空格播放/暂停等）。
 - FLAC 播放优先同名 `.m4a`，否则 `ffmpeg` 转 ALAC 缓存以保证 seek 准确。
 - 本地 SQLite 索引音乐库与曲目（ID3、歌词有无、播放历史等）；总列表按库顺序 + 显示名自然排序（⌘R 刷新后更新）。
@@ -219,7 +219,11 @@ Sources/LocalLrcPlayer/
   PlayerWindowToolbar.swift     主窗口 NSToolbar
   UIChrome.swift                空状态、Symbol 工具
   MenuBarLyricsController.swift 菜单栏歌词与快捷菜单
-  MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
+  MenuBarLyricsStatusImage.swift  菜单栏歌词位图（白字/居中/滚动）
+  MenuBarStatusItemVisibility.swift  NSStatusItem 可见性恢复
+  MenuBarVisibilityGuide.swift    macOS 26 菜单栏权限引导
+  LibraryBookmarkStore.swift      音乐库 Security-Scoped Bookmark
+  MenuBarLyricsView.swift       （遗留）自定义 NSView 绘制
   AppDelegate.swift             应用生命周期、About/Help
   AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
   main.swift                    App 启动入口
@@ -277,7 +281,17 @@ Sources/LocalLrcPlayer/**/*.swift
 |---|---|
 | 音乐库 | 已注册文件夹列表；添加文件夹；移除所选（仅删数据库索引） |
 | 歌词 | Cookie 来源、设置/重置 Cookie、下载当前歌词、补全缺失歌词 |
-| 菜单栏歌词 | 开关、宽度预设/自定义、音符图标 |
+| 菜单栏歌词 | 开关、**最大**宽度预设/自定义（80–400 pt）、音符图标 |
+
+### 菜单栏歌词不显示（macOS 26）
+
+1. 打开 **系统设置 → 菜单栏**，确认 **LocalLrcPlayer**（或 Local LRC Player）已允许在菜单栏显示。
+2. 完全退出（⌘Q）后重新 `./build.sh` 并打开 `build/LocalLrcPlayer.app`（当前 bundle 为 `local.lrc.player.v2`，相当于新应用身份）。
+3. 若仍不显示，在应用内关闭再打开「在菜单栏显示歌词」。
+
+### 每次启动都询问访问「下载」等文件夹
+
+音乐库若在受 macOS 保护的目录（如「下载」），首次需点 **允许**。之后应通过 Security-Scoped Bookmark 记住授权；若仍反复弹出，请在应用内 **⌘O** 或设置里**重新选择**该音乐文件夹一次以写入 bookmark。
 
 ### 搜索后播放，取消搜索找不到当前歌
 

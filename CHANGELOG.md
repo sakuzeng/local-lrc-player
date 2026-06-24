@@ -82,6 +82,36 @@
 - `./build.sh` 构建成功。
 - `./test.sh` 全部通过。
 
+## 2026-06-25（菜单栏歌词）
+
+本日主要交付：macOS 26 菜单栏歌词显示修复、滚动/对齐/样式改进、音乐库 Security-Scoped Bookmark。
+
+### Added
+
+- **`MenuBarLyricsStatusImage`**：菜单栏歌词改为位图渲染（白字、短句居中），兼容 macOS 26 上 `button.title` 不显示的问题。
+- **`MenuBarStatusItemVisibility`**：启动前清除 `NSStatusItem Visible` / `VisibleCC` 等持久化隐藏状态，并多次强制 `isVisible = true`。
+- **`MenuBarVisibilityGuide`**：检测菜单栏项可能被系统拦截时，提示打开「系统设置 → 菜单栏」。
+- **`LibraryBookmarkStore`**：音乐库文件夹 Security-Scoped Bookmark；启动时恢复授权，减少「下载」等受保护目录每次启动弹窗。
+
+### Changed
+
+- **菜单栏宽度**：设置中的 120/140/160 pt 等为**最大宽度**；短歌词时 pill 随文字收缩，长句滚动时扩至上限。
+- **菜单栏滚动**：长句播放时从行首滚到行尾后**停下**（不再循环）；换行后重新从行首开始。
+- **菜单栏下拉菜单**：使用 `statusItem.menu` 原生绑定（无 `popUp` 顶部 `^` 拖拽柄）；菜单外观设为浅色（`NSAppearance.aqua`）。
+- **构建标识**：`CFBundleIdentifier` 改为 `local.lrc.player.v2`（绕过 macOS 26 对旧 bundle 的菜单栏项卡住状态；需在系统设置中重新允许菜单栏显示）。
+
+### Fixed
+
+- **菜单栏歌词完全不显示**（macOS 26）：启动时 `menuBarLyricsController` 尚未注入导致 `syncMenuBarLyrics` 跳过；`AppDelegate` 就绪后补同步；`restoreLastSelection` 末尾再次同步。
+- **菜单栏项创建但不可见**：`autosaveName` / Control Center `VisibleCC` 持久化为隐藏；清除并重绑；改用 `button.image` 替代失效的自定义 `NSView` 子视图。
+- **菜单栏无匹配歌词行时不更新**：`update()` 增加 fallback 行索引，前奏时显示首行或最近行。
+- **每次启动请求访问「下载」文件夹**：选择/注册库时保存 bookmark，启动与 sync 前 `startAccessingSecurityScopedResource()`。
+
+### Verified
+
+- `./build.sh` 构建成功。
+- 手动：菜单栏显示歌词、短句居中、长句滚至末尾停止、下拉无 `^`、浅色菜单；系统设置已允许后稳定显示。
+
 ## 2026-06-15
 
 ### Added
