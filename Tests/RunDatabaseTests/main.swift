@@ -60,6 +60,7 @@ final class MasterPlaylistRepositoryTests {
         try runIsolated { try self.testRemovingFileUnlinksLibraryTrackAndKeepsDuplicateCopy() }
         try runIsolated { try self.testRemovingLibraryKeepsSharedTrack() }
         try runIsolated { try self.testRemovingLibraryClearsPlayerState() }
+        try runIsolated { try self.testSyncReordersMasterPlaylistByFileName() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -202,6 +203,30 @@ final class MasterPlaylistRepositoryTests {
         try assertEqual(state.lastTrackId, nil)
         try assertEqual(state.lastPosition, 0)
         try assertEqual(try trackRepository.masterPlaylistTracks().count, 0)
+    }
+
+    private func testSyncReordersMasterPlaylistByFileName() throws {
+        let library = tempRoot.appendingPathComponent("Reorder", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+
+        try Data("z-song".utf8).write(to: library.appendingPathComponent("z-last.mp3"))
+        try Data("a-song".utf8).write(to: library.appendingPathComponent("a-first.mp3"))
+
+        let registered = try libraryRepository.registerLibrary(at: library)
+        _ = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+
+        let namesAfterFirstSync = try trackRepository.masterPlaylistTracks().map(\.fileName)
+        try assertEqual(namesAfterFirstSync, ["a-first.mp3", "z-last.mp3"], "sync should order by file name")
+
+        try Data("m-song".utf8).write(to: library.appendingPathComponent("m-middle.mp3"))
+        _ = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+
+        let namesAfterSecondSync = try trackRepository.masterPlaylistTracks().map(\.fileName)
+        try assertEqual(
+            namesAfterSecondSync,
+            ["a-first.mp3", "m-middle.mp3", "z-last.mp3"],
+            "refresh should reorder newly added tracks"
+        )
     }
 }
 

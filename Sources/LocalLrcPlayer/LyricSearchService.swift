@@ -59,11 +59,7 @@ final class LyricSearchService {
             }
 
         case .qqMusic:
-            guard let cookie = readCookie(provider: provider) else {
-                completion(.failure(LyricDownloadError.missingCookie(provider)))
-                return
-            }
-
+            let cookie = readCookie(provider: provider) ?? ""
             qqMusicClient.search(keyword: query.keyword, cookie: cookie) { [weak self] result in
                 guard let self else {
                     return
@@ -127,14 +123,15 @@ final class LyricSearchService {
 
         group.notify(queue: .main) {
             var sections: [LyricCandidateSection] = []
-            if !netEaseCandidates.isEmpty {
+            if hasNetEase {
                 sections.append(LyricCandidateSection(provider: .netEase, candidates: netEaseCandidates))
             }
-            if !qqMusicCandidates.isEmpty {
+            if hasQQMusic {
                 sections.append(LyricCandidateSection(provider: .qqMusic, candidates: qqMusicCandidates))
             }
 
-            if sections.isEmpty {
+            let hasAnyCandidate = sections.contains { !$0.candidates.isEmpty }
+            guard hasAnyCandidate else {
                 if let error = errors.first {
                     completion(.failure(error))
                 } else {
@@ -163,10 +160,7 @@ final class LyricSearchService {
             }
 
         case .qqMusic:
-            guard let cookie = readCookie(provider: candidate.provider) else {
-                completion(.failure(LyricDownloadError.missingCookie(candidate.provider)))
-                return
-            }
+            let cookie = readCookie(provider: candidate.provider) ?? ""
             qqMusicClient.lyric(songMid: candidate.identifier, cookie: cookie) { result in
                 completion(result.map { LyricFormatter.interleaved($0) })
             }

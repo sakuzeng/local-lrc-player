@@ -128,5 +128,42 @@ final class PlaylistRepository {
         }
     }
 
+    func reorderMasterPlaylistByFileName(db: OpaquePointer) throws {
+        let selectSQL = """
+        SELECT pt.track_id
+        FROM playlist_tracks pt
+        JOIN tracks t ON t.id = pt.track_id
+        WHERE pt.playlist_id = ?
+        ORDER BY t.file_name COLLATE NOCASE ASC;
+        """
+        let select = try database.prepare(db, sql: selectSQL)
+        defer { sqlite3_finalize(select) }
+        sqlite3_bind_int64(select, 1, MasterPlaylist.id)
+
+        var trackIds: [Int64] = []
+        while sqlite3_step(select) == SQLITE_ROW {
+            trackIds.append(sqlite3_column_int64(select, 0))
+        }
+
+        let updateSQL = """
+        UPDATE playlist_tracks
+        SET sort_order = ?
+        WHERE playlist_id = ? AND track_id = ?;
+        """
+        let update = try database.prepare(db, sql: updateSQL)
+        defer { sqlite3_finalize(update) }
+
+        for (index, trackId) in trackIds.enumerated() {
+            sqlite3_reset(update)
+            sqlite3_clear_bindings(update)
+            sqlite3_bind_int64(update, 1, Int64(index + 1))
+            sqlite3_bind_int64(update, 2, MasterPlaylist.id)
+            sqlite3_bind_int64(update, 3, trackId)
+            guard sqlite3_step(update) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 }

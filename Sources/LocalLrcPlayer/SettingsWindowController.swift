@@ -25,6 +25,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let menuBarShowIconButton = NSButton(checkboxWithTitle: "显示音符图标", target: nil, action: nil)
 
     private var contentScrollView: NSScrollView?
+    private var lyricDownloadBusy = false
 
     var selectedLyricProvider: LyricProvider {
         let index = lyricProviderPopup.indexOfSelectedItem
@@ -70,7 +71,15 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSApp.activate(ignoringOtherApps: true)
         reloadLibraries()
         refreshMenuBarControls()
+        resetLyricDownloadBusyIfIdle()
         scrollContentToTop()
+    }
+
+    func resetLyricDownloadBusyIfIdle() {
+        if playerWindowController?.lyricCandidateDialog == nil {
+            lyricDownloadBusy = false
+        }
+        refreshLyricDownloadButtons()
     }
 
     /// 将设置窗口居中到主窗口所在屏幕；无主窗口时退回到鼠标或 key 窗口所在屏幕。
@@ -126,16 +135,20 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     }
 
     func setLyricDownloadButtonsEnabled(_ isEnabled: Bool) {
-        let hasTracks = playerWindowController?.tracks.isEmpty == false
-        setCookieButton.isEnabled = isEnabled
-        resetCookieButton.isEnabled = isEnabled
-        downloadCurrentLyricButton.isEnabled = isEnabled && hasTracks
-        fillMissingLyricsButton.isEnabled = isEnabled && hasTracks
+        lyricDownloadBusy = !isEnabled
+        refreshLyricDownloadButtons()
     }
 
     func updateLyricDownloadButtonState(hasTracks: Bool) {
-        downloadCurrentLyricButton.isEnabled = hasTracks
-        fillMissingLyricsButton.isEnabled = hasTracks
+        refreshLyricDownloadButtons(hasTracks: hasTracks)
+    }
+
+    private func refreshLyricDownloadButtons(hasTracks: Bool? = nil) {
+        let hasTracks = hasTracks ?? (playerWindowController?.tracks.isEmpty == false)
+        setCookieButton.isEnabled = true
+        resetCookieButton.isEnabled = true
+        downloadCurrentLyricButton.isEnabled = !lyricDownloadBusy && hasTracks
+        fillMissingLyricsButton.isEnabled = !lyricDownloadBusy && hasTracks
     }
 
     private static let formLabelWidth: CGFloat = 108
@@ -496,6 +509,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
     @objc private func lyricProviderChanged() {
         updateCookieButtonTitle()
+        resetLyricDownloadBusyIfIdle()
     }
 
     @objc private func toggleMenuBarLyricsEnabled(_ sender: NSButton) {

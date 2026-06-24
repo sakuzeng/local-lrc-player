@@ -79,6 +79,7 @@
 - 为避免 macOS 钥匙串反复弹密码，Cookie 存储从 Keychain 改为本机私有配置文件。
 - FLAC 手动拖动进度条后歌词和音频不同步，根因是 AVPlayer 直接 seek FLAC 落点不准；当前通过 ALAC 缓存规避。
 - QQ 音乐旧搜索接口 `client_search_cp` 会返回空候选，已改用 `musicu.fcg` 的 `DoSearchForQQMusicDesktop`。
+- **QQ 音乐搜索再次空候选**（2026-06-23）：迁移到 `musicu.fcg` 时在请求里附带 `comm.ct=24&cv=0`（模拟桌面客户端）；QQ 音乐上游后来对该参数组合改为返回 `code:0` 但 `song.list` 为空（静默失败，非 App 近期 UI 改动引起）。搜索请求已去掉 `comm` 字段；歌词拉取接口不受影响。
 - 歌词候选窗口曾经卡在“正在加载歌词预览”，已改为非模态窗口，并为网易云歌词详情请求增加超时和降级请求。
 - 日语歌播放时中日文高亮来回切换，已在 `LrcParser.activeLineIndex` 中让同一时间戳组内优先高亮中文译文，日文原文仍保留显示。
 - 多语种歌词显示顺序不一致，已在 `LrcParser.normalizedDisplayOrder` 中按组内语言组合固定为原文在上、中文译文在下；日文歌为日文在上，英文歌为英文在上。

@@ -47,3 +47,7 @@
 - 将 FLAC 转码缓存改成后台任务，避免首次播放大文件时 UI 短暂卡住。
 - 曲目数量很大时（>5000）为 tracks 表增加 FTS5 全文索引。
 - `TrackMetadataReader` 改用 AVAsset 异步 load API，消除 macOS 13 弃用警告。
+
+## 解决不了的
+
+- 南山忆手动移动后歌词匹配不上 

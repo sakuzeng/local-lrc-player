@@ -1,6 +1,6 @@
 import AppKit
 
-final class LyricCandidateDialog: NSWindowController, NSTableViewDataSource, NSTableViewDelegate {
+final class LyricCandidateDialog: NSWindowController, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private enum Row {
         case header(LyricProvider)
         case candidate(ScoredLyricCandidate)
@@ -20,6 +20,7 @@ final class LyricCandidateDialog: NSWindowController, NSTableViewDataSource, NST
 
     private var selectedLyric: String?
     private var selectedCandidateRow: Int?
+    private var didComplete = false
 
     init(
         service: LyricSearchService,
@@ -43,6 +44,7 @@ final class LyricCandidateDialog: NSWindowController, NSTableViewDataSource, NST
         window.title = "选择歌词：\(track.displayName)"
         window.minSize = NSSize(width: 760, height: 460)
         super.init(window: window)
+        window.delegate = self
         setupUI()
     }
 
@@ -267,20 +269,30 @@ final class LyricCandidateDialog: NSWindowController, NSTableViewDataSource, NST
 
         do {
             let url = try service.saveFormattedLyric(selectedLyric, for: track, replaceExisting: replaceExisting)
-            completion(.success(url))
-            closeModal()
+            finish(.success(url))
         } catch {
             statusLabel.stringValue = error.localizedDescription
         }
     }
 
     @objc private func cancel() {
-        completion(.failure(LyricCandidateDialogError.cancelled))
-        closeModal()
+        finish(.failure(LyricCandidateDialogError.cancelled))
     }
 
-    private func closeModal() {
-        if let window {
+    func windowWillClose(_ notification: Notification) {
+        guard !didComplete else {
+            return
+        }
+        finish(.failure(LyricCandidateDialogError.cancelled), closeWindow: false)
+    }
+
+    private func finish(_ result: Result<URL, Error>, closeWindow: Bool = true) {
+        guard !didComplete else {
+            return
+        }
+        didComplete = true
+        completion(result)
+        if closeWindow, let window {
             window.close()
         }
     }

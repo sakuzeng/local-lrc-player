@@ -203,32 +203,46 @@ Cookie 保存位置：
 
 ```text
 Sources/LocalLrcPlayer/
-  AppDatabase.swift             SQLite 连接与 schema 迁移（当前 v3）
+  AppDatabase.swift             SQLite 连接与 schema 迁移（v3）
   PlaybackMode.swift            播放模式枚举
-  LibraryRepository.swift       音乐库 CRUD
-  TrackRepository.swift         曲目增量 sync、总列表查询
+  TrackContentHasher.swift      文件 SHA256
   PlaylistRepository.swift      总播放列表
   PlayerStateRepository.swift   播放进度、窗口 frame、播放模式
+  LibraryRepository.swift       音乐库 register / delete / 列表
+  TrackRepository.swift         曲目 sync、去重、总列表查询
   AppSettingsRepository.swift   菜单栏歌词等 UI 设置
   PlayHistoryRepository.swift   播放历史
-  LyricLogRepository.swift     歌词下载审计
+  LyricLogRepository.swift      歌词下载审计
+  DatabaseModels.swift          数据库记录模型
+  TrackMetadataReader.swift     AVAsset 读取 ID3 元数据
   SettingsWindowController.swift  设置窗口（⌘,）
   PlayerWindowToolbar.swift     主窗口 NSToolbar
-  MenuBarLyricsController.swift 菜单栏歌词
   UIChrome.swift                空状态、Symbol 工具
-  PlayerWindowController.swift  主窗口协调
-  PlayerWindowController_Library.swift
-  PlayerWindowController_Playback.swift
-  PlayerWindowController_LyricsDownload.swift
+  MenuBarLyricsController.swift 菜单栏歌词与快捷菜单
+  MenuBarLyricsView.swift       菜单栏跑马灯歌词绘制
+  AppDelegate.swift             应用生命周期、About/Help
+  AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
+  main.swift                    App 启动入口
+  PlayerWindowController.swift  主窗口：绑定、快捷键、焦点
+  PlayerWindowController_Library.swift      音乐库加载与刷新
+  PlayerWindowController_Playback.swift     播放、进度、歌词、播放模式
+  PlayerWindowController_LyricsDownload.swift  歌词下载与补全
   PlayerWindowLayout.swift      主窗口布局（列表顶栏、播放区）
-  TrackListDataSource.swift     曲目列表数据源
-  PlaybackController.swift      AVPlayer 封装
-  PlaybackAssetResolver.swift   FLAC → ALAC 缓存
-  LyricsView.swift              歌词显示
+  TrackListDataSource.swift     曲目列表、播放行样式
+  PlaybackController.swift      AVPlayer 播放封装
+  PlaybackAssetResolver.swift   FLAC 播放与 ALAC 缓存
+  LyricsView.swift              歌词显示、高亮、滚动
   LrcParser.swift               LRC 解析
+  MusicLibrary.swift            音乐目录扫描
   SeekSlider.swift              自定义进度条
-  LyricSearchService.swift      歌词搜索与下载
-  …（其余见 HANDOFF.md 完整列表）
+  CookieStore.swift             歌词 Cookie 本地保存
+  NetEaseLyricClient.swift      网易云搜索与歌词接口
+  QQMusicLyricClient.swift      QQ 音乐搜索与歌词接口
+  LyricSearchService.swift      歌词搜索、评分与下载协调
+  LyricCandidateDialog.swift    候选歌词预览与选择
+  LyricFormatter.swift          多语种歌词格式化
+  LyricFileWriter.swift         同名 .lrc 写入
+  Result+Success.swift          Result 便捷扩展
 ```
 
 ## 开发
@@ -308,6 +322,10 @@ open build/LocalLrcPlayer.app
 ### 下载歌词时仍弹出钥匙串密码
 
 新版已经不再使用 Keychain 保存 Cookie。请先退出旧 App，重新打开新版。如果仍弹出钥匙串密码，说明当前运行的还是旧版本。
+
+### QQ 音乐候选始终为空 / 只有网易云有结果
+
+2026-06-15 起搜索接口已改为 `musicu.fcg`，但请求里仍附带 `comm.ct=24&cv=0`（模拟 QQ 音乐桌面客户端）。QQ 音乐服务器后来对该参数组合改为「接口成功、列表为空」，因此会出现只有网易云有候选、或 QQ 分组下无歌曲的现象——并非 Cookie 设置或近期 UI 改动直接导致。2026-06-23 起搜索请求已去掉 `comm` 字段；若仍无 QQ 候选，请检查 QQ Cookie 是否过期并在 y.qq.com 重新复制。
 
 ## 当前限制
 

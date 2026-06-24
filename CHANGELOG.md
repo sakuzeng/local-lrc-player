@@ -17,7 +17,7 @@
 - **播放模式**：顺序 / 单曲循环 / 随机；播放区按钮循环切换（`arrow.right.to.line` / `repeat.1` / `shuffle`），写入 `player_state.playback_mode`（schema v3）。
 - 数据库 schema **v3**：`player_state` 增加 `playback_mode` 列。
 - **列表顶栏定位**：曲目列表上方 `listHeaderBar`（`歌曲 · N` + `scope` 定位正在播放）；`listNavigationStack` 预留扩展位。
-- 数据库测试：`PlayerStateRepositoryTests`（`playback_mode` 默认值与持久化）。
+- 数据库测试：`PlayerStateRepositoryTests`（`playback_mode` 默认值与持久化）；`testSyncReordersMasterPlaylistByFileName`。
 - 文档：`doc/ui.md`（主窗口布局与 NSToolbar 分段经验）。
 
 ### Changed
@@ -49,6 +49,10 @@
 - **歌曲末尾歌词贴底**：歌词区上下留白随视口高度调整，末行高亮可保持在视口正中而非被 `maxY` 卡在底部。
 - **列表悬停滚动残影**：悬停状态改由 `TrackListDataSource` 集中管理；`TrackTableView` 监听鼠标移动，滚动时按当前指针重算悬停行，避免行复用后多行灰底残留。
 - **顺序播放模式按钮不高亮**：`setPlaybackMode` 对三种模式统一使用 `controlAccentColor`，不再将顺序模式降为次要色。
+- **刷新后列表排序不更新**：每次 `TrackRepository.sync` 结束后按 `file_name` 重算总播放列表 `sort_order`。
+- **歌词下载时 Cookie 按钮变灰且无法恢复**：下载进行中仅禁用下载类按钮；切换 Cookie 来源或重新打开设置会刷新状态；关闭候选窗口（含点 ×）会正确恢复按钮。
+- **下载当前歌词只显示单一来源**：已配置双 Cookie 时候选对话框始终按网易云 / QQ 音乐分组展示（某来源无结果时仍显示对应分组标题）。
+- **QQ 音乐搜索始终返回空候选**：2026-06-15 从 `client_search_cp` 迁到 `musicu.fcg` 时，请求附带 `comm.ct=24&cv=0`（模拟桌面客户端）；QQ 音乐上游后来对该参数改为 HTTP 200 + `code:0` 但 `song.list` 为空（静默失败，与近期 UI/设置改动无关）。已移除搜索请求中的 `comm` 字段；双源候选与歌词预览恢复正常。
 
 ### Verified
 

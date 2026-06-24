@@ -9,14 +9,8 @@ struct QQMusicSongCandidate {
 
 final class QQMusicLyricClient {
     func search(keyword: String, cookie: String, completion: @escaping (Result<[QQMusicSongCandidate], Error>) -> Void) {
-        let loginUin = qqNumber(from: cookie)
+        // 不要附带 comm.ct/cv：带 ct=24&cv=0 时接口会返回空 song.list（2026-06 实测）。
         let payload: [String: Any] = [
-            "comm": [
-                "ct": 24,
-                "cv": 0,
-                "uin": loginUin,
-                "g_tk": gTk(from: cookie)
-            ],
             "req_1": [
                 "module": "music.search.SearchCgiService",
                 "method": "DoSearchForQQMusicDesktop",
@@ -45,7 +39,10 @@ final class QQMusicLyricClient {
             do {
                 let data = try Self.requireData(data)
                 let response = try JSONDecoder().decode(QQMusicSearchResponse.self, from: data)
-                let items = response.req_1?.data?.body.song.list ?? []
+                if let moduleCode = response.req_1?.code, moduleCode != 0 {
+                    throw QQMusicLyricClientError.searchFailed(code: moduleCode)
+                }
+                let items = response.req_1?.data?.body.songList ?? []
                 let songs = items.compactMap { item -> QQMusicSongCandidate? in
                     guard let songMid = item.songMid, !songMid.isEmpty else {
                         return nil
@@ -114,7 +111,10 @@ final class QQMusicLyricClient {
         request.setValue("https://y.qq.com/", forHTTPHeaderField: "Referer")
         request.setValue("https://y.qq.com", forHTTPHeaderField: "Origin")
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X) LocalLrcPlayer", forHTTPHeaderField: "User-Agent")
-        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        let trimmedCookie = cookie.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedCookie.isEmpty {
+            request.setValue(trimmedCookie, forHTTPHeaderField: "Cookie")
+        }
     }
 
     private func qqNumber(from cookie: String) -> String {
@@ -183,6 +183,7 @@ private struct QQMusicSearchResponse: Decodable {
 }
 
 private struct QQMusicSearchModule: Decodable {
+    let code: Int?
     let data: QQMusicSearchData?
 }
 
@@ -191,7 +192,11 @@ private struct QQMusicSearchData: Decodable {
 }
 
 private struct QQMusicSearchBody: Decodable {
-    let song: QQMusicSongList
+    let song: QQMusicSongList?
+
+    var songList: [QQMusicSearchItem] {
+        song?.list ?? []
+    }
 }
 
 private struct QQMusicSongList: Decodable {
@@ -237,6 +242,7 @@ private struct QQMusicLyricResponse: Decodable {
 enum QQMusicLyricClientError: LocalizedError {
     case emptyResponse
     case noLyric
+    case searchFailed(code: Int)
 
     var errorDescription: String? {
         switch self {
@@ -244,6 +250,8 @@ enum QQMusicLyricClientError: LocalizedError {
             return "QQ 音乐返回为空"
         case .noLyric:
             return "QQ 音乐未返回可用歌词"
+        case .searchFailed(let code):
+            return "QQ 音乐搜索失败（code \(code)）"
         }
     }
 }
