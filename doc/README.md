@@ -11,7 +11,7 @@
 
 ## 维护约定
 
-- 修改 `AppDatabase.swift` 中的 schema 或 Repository 行为时，**同步更新** `doc/database.md`。
-- 修改主窗口工具栏、列表顶栏、播放区布局时，**同步更新** `doc/ui.md`。
+- 修改 `AppDatabase.swift` 中的 schema 或 Repository 行为时，同步更新 `doc/database.md`。
+- 修改主窗口工具栏、列表顶栏、播放区布局时，同步更新 `doc/ui.md`。
 - 在 `CHANGELOG.md` 的 `Changed` 或 `Added` 中简要提及 schema 版本变更。
-- 歌词正文、音频文件、Cookie **不写入数据库**；数据库只存索引、状态与审计 log。
+- 歌词正文、音频文件、Cookie 不写入数据库；数据库只存索引、状态与审计 log。

@@ -2,7 +2,7 @@
 
 ## 概览
 
-Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁盘上的音频与 `.lrc` 文件。
+Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘上的音频与 `.lrc` 文件。
 
 | 项目 | 值 |
 |---|---|
@@ -14,12 +14,12 @@ Local LRC Player 使用本机 SQLite 作为**索引与状态层**，不替代磁
 
 ### 设计原则
 
-1. **文件为准**：`.lrc` 与音频仍在用户所选音乐文件夹内；`tracks.has_lyric` 只是缓存标记。
-2. **Cookie 不进库**：网易云 / QQ 音乐 Cookie 仍在 `netease-cookie.txt`、`qqmusic-cookie.txt`。
-3. **总播放列表**：UI 列表读系统内置 `playlists.id = 1`（「全部」），多次选文件夹累积曲目。
-4. **内容去重**：`tracks.content_hash`（SHA256）为业务唯一键；同内容不同路径只一条 `tracks` 行。
-5. **增量 sync**：`library_tracks` 以 `mtime/size` 判断是否需要重算 hash / 读 ID3。
-6. **级联删除**：删除 `tracks` 时 CASCADE 清理 history / log / playlist_tracks。
+1. 文件为准：`.lrc` 与音频仍在用户所选音乐文件夹内；`tracks.has_lyric` 只是缓存标记。
+2. Cookie 不进库：网易云 / QQ 音乐 Cookie 仍在 `netease-cookie.txt`、`qqmusic-cookie.txt`。
+3. 总播放列表：UI 列表读系统内置 `playlists.id = 1`（「全部」），多次选文件夹累积曲目。
+4. 内容去重：`tracks.content_hash`（SHA256）为业务唯一键；同内容不同路径只一条 `tracks` 行。
+5. 增量 sync：`library_tracks` 以 `mtime/size` 判断是否需要重算 hash / 读 ID3。
+6. 级联删除：删除 `tracks` 时 CASCADE 清理 history / log / playlist_tracks。
 
 ---
 
@@ -108,8 +108,8 @@ erDiagram
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `id` | INTEGER | **PK**, AUTOINCREMENT | 库 ID |
-| `path` | TEXT | NOT NULL, **UNIQUE** | 标准化绝对路径 |
+| `id` | INTEGER | PK, AUTOINCREMENT | 库 ID |
+| `path` | TEXT | NOT NULL, UNIQUE | 标准化绝对路径 |
 | `display_name` | TEXT | | 文件夹名 |
 | `last_track_id` | INTEGER | | 遗留列，播放恢复用 `player_state` |
 | `last_position` | REAL | NOT NULL, DEFAULT 0 | 遗留列 |
@@ -122,13 +122,13 @@ erDiagram
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `id` | INTEGER | **PK**, AUTOINCREMENT | 内部 ID（`AUTOINCREMENT` 不重用已删 ID） |
-| `library_id` | INTEGER | NOT NULL, **FK** → `libraries(id)` | 首次发现该 hash 的库 |
-| `file_path` | TEXT | NOT NULL, **UNIQUE** | 当前用于播放的 canonical 路径 |
-| `content_hash` | TEXT | **UNIQUE** | 文件内容 SHA256（十六进制） |
+| `id` | INTEGER | PK, AUTOINCREMENT | 内部 ID（`AUTOINCREMENT` 不重用已删 ID） |
+| `library_id` | INTEGER | NOT NULL, FK → `libraries(id)` | 首次发现该 hash 的库 |
+| `file_path` | TEXT | NOT NULL, UNIQUE | 当前用于播放的 canonical 路径 |
+| `content_hash` | TEXT | UNIQUE | 文件内容 SHA256（十六进制） |
 | `file_name` … `updated_at` | | | 同 v1 |
 
-**去重规则**：sync 时若 `content_hash` 已存在，不 INSERT 新行，只更新 `library_tracks` 并确保在总播放列表中。
+去重规则：sync 时若 `content_hash` 已存在，不 INSERT 新行，只更新 `library_tracks` 并确保在总播放列表中。
 
 ---
 
@@ -136,13 +136,13 @@ erDiagram
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `library_id` | INTEGER | **PK**, **FK** → `libraries(id)` CASCADE | 库 |
-| `file_path` | TEXT | **PK** | 该库下的绝对路径 |
-| `track_id` | INTEGER | NOT NULL, **FK** → `tracks(id)` CASCADE | 对应全局 track |
+| `library_id` | INTEGER | PK, FK → `libraries(id)` CASCADE | 库 |
+| `file_path` | TEXT | PK | 该库下的绝对路径 |
+| `track_id` | INTEGER | NOT NULL, FK → `tracks(id)` CASCADE | 对应全局 track |
 | `file_mtime` | REAL | NOT NULL | 缓存 mtime |
 | `file_size` | INTEGER | NOT NULL | 缓存 size |
 
-**唯一**：`(library_id, track_id)`
+唯一：`(library_id, track_id)`
 
 同 hash 多路径时，每个库各一行 `library_tracks`，共用一条 `tracks`。
 
@@ -150,22 +150,22 @@ erDiagram
 
 ### `playlists` / `playlist_tracks` — 播放列表
 
-**`playlists`**
+`playlists`
 
 | 列 | 说明 |
 |---|---|
 | `id = 1`, `name = '全部'`, `is_system = 1` | 系统总列表（当前 UI 唯一使用） |
 
-**`playlist_tracks`**
+`playlist_tracks`
 
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
-| `playlist_id` | INTEGER | **PK**, **FK** → `playlists(id)` CASCADE | 列表 |
-| `track_id` | INTEGER | **PK**, **FK** → `tracks(id)` CASCADE | 曲目 |
+| `playlist_id` | INTEGER | PK, FK → `playlists(id)` CASCADE | 列表 |
+| `track_id` | INTEGER | PK, FK → `tracks(id)` CASCADE | 曲目 |
 | `added_at` | REAL | NOT NULL | 加入时间 |
 | `sort_order` | INTEGER | NOT NULL | 列表排序 |
 
-**索引**：`idx_playlist_tracks_order (playlist_id, sort_order)`
+索引：`idx_playlist_tracks_order (playlist_id, sort_order)`
 
 ---
 
@@ -197,7 +197,7 @@ erDiagram
 
 ### `play_history` / `lyric_download_log`
 
-与 v1 相同，通过 `track_id` **FK** → `tracks(id)` ON DELETE CASCADE。
+与 v1 相同，通过 `track_id` FK → `tracks(id)` ON DELETE CASCADE。
 
 ---
 
@@ -253,10 +253,10 @@ reloadMasterPlaylist()
 
 | 操作 | 结果 |
 |---|---|
-| 某库下文件删除 | 删对应 `library_tracks`；若同 hash 其他路径仍在 → **保留** `tracks` |
+| 某库下文件删除 | 删对应 `library_tracks`；若同 hash 其他路径仍在 → 保留 `tracks` |
 | 某 hash 所有路径消失 | DELETE `tracks` → CASCADE 清理 playlist/history/log |
 | `tracks.id` 删除 | ID 不重用；`player_state.last_track_id` 无效时 UI 回退首行 |
-| **设置中移除整个文件夹** | `TrackRepository.removeLibrary`：删该库全部 `library_tracks` → 按 hash 决定去留 `tracks` → 删 `libraries` 行；共有曲目重定向 `library_id` / 规范 `file_path`；若 `player_state.last_track_id` 被删则清空 |
+| 设置中移除整个文件夹 | `TrackRepository.removeLibrary`：删该库全部 `library_tracks` → 按 hash 决定去留 `tracks` → 删 `libraries` 行；共有曲目重定向 `library_id` / 规范 `file_path`；若 `player_state.last_track_id` 被删则清空 |
 
 ### 5. 用户从设置移除文件夹
 
@@ -275,7 +275,7 @@ SettingsWindowController → LibraryRepository.deleteLibrary(id)
 ./test.sh
 ```
 
-覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、**整库移除**后共有曲目保留与 `player_state` 清理。
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理。
 
 ---
 
