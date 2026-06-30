@@ -2,6 +2,16 @@
 
 一个轻量原生 macOS 本地音乐播放器，用于播放本地音乐并显示同名 `.lrc` 同步歌词。
 
+## 预览
+
+主窗口（曲目列表 + 同步歌词）：
+
+![主窗口](./doc/screenshots/main-window.png)
+
+设置窗口（音乐库 + 歌词 Cookie/下载）：
+
+![设置窗口](./doc/screenshots/settings.png)
+
 ## 功能
 
 ### 播放与列表
