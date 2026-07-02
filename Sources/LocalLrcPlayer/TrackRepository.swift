@@ -1,170 +1,20 @@
 import Foundation
 import SQLite3
 
-struct TrackSyncSummary {
-    let inserted: Int
-    let updated: Int
-    let removed: Int
-    let deduplicated: Int
-    let total: Int
-    let missingLyrics: Int
-}
-
+// tracks / library_tracks 表的查询、CRUD 与音乐库删除。
+// 文件夹扫描 + 增量 sync 引擎在 TrackRepository_Sync.swift。
+// 注: database / playlistRepository 及下方标注"共享"的助手是 internal(非 private),
+// 因为 Swift 的 private 是文件级作用域, 同一类型在另一文件里的 extension(sync 引擎)需要访问它们。
 final class TrackRepository {
-    private let database: AppDatabase
-    private let playlistRepository: PlaylistRepository
+    let database: AppDatabase
+    let playlistRepository: PlaylistRepository
 
     init(database: AppDatabase = .shared, playlistRepository: PlaylistRepository? = nil) {
         self.database = database
         self.playlistRepository = playlistRepository ?? PlaylistRepository(database: database)
     }
 
-    func sync(libraryId: Int64, folderURL: URL) throws -> TrackSyncSummary {
-        let scanned = try MusicLibrary.scanFiles(folderURL: folderURL)
-        return try database.write { db in
-            var existingLibraryTracks: [String: LibraryTrackSnapshot] = [:]
-            let selectSQL = """
-            SELECT lt.file_path, lt.track_id, lt.file_mtime, lt.file_size, t.content_hash, t.file_path
-            FROM library_tracks lt
-            JOIN tracks t ON t.id = lt.track_id
-            WHERE lt.library_id = ?;
-            """
-            let select = try database.prepare(db, sql: selectSQL)
-            defer { sqlite3_finalize(select) }
-            sqlite3_bind_int64(select, 1, libraryId)
-            while sqlite3_step(select) == SQLITE_ROW {
-                let path = String(cString: sqlite3_column_text(select, 0))
-                let canonicalPath = String(cString: sqlite3_column_text(select, 5))
-                let contentHash = sqlite3_column_type(select, 4) == SQLITE_NULL
-                    ? nil
-                    : String(cString: sqlite3_column_text(select, 4))
-                existingLibraryTracks[path] = LibraryTrackSnapshot(
-                    trackId: sqlite3_column_int64(select, 1),
-                    mtime: sqlite3_column_double(select, 2),
-                    size: sqlite3_column_int64(select, 3),
-                    contentHash: contentHash,
-                    canonicalFilePath: canonicalPath
-                )
-            }
-
-            var inserted = 0
-            var updated = 0
-            var deduplicated = 0
-            let now = Date().timeIntervalSince1970
-            var seenPaths = Set<String>()
-
-            for file in scanned {
-                seenPaths.insert(file.url.path)
-                if let snapshot = existingLibraryTracks[file.url.path],
-                   snapshot.mtime == file.mtime,
-                   snapshot.size == file.size {
-                    try updateHasLyric(db: db, trackId: snapshot.trackId, hasLyric: file.hasLyric)
-                    try upsertLibraryTrack(
-                        db: db,
-                        libraryId: libraryId,
-                        trackId: snapshot.trackId,
-                        file: file
-                    )
-                    continue
-                }
-
-                let contentHash = try TrackContentHasher.hash(fileURL: file.url)
-                if let existingTrackId = try trackId(forContentHash: contentHash, db: db) {
-                    try linkExistingTrack(
-                        db: db,
-                        libraryId: libraryId,
-                        trackId: existingTrackId,
-                        file: file,
-                        updatedAt: now
-                    )
-                    try playlistRepository.ensureInMasterPlaylist(db: db, trackId: existingTrackId, addedAt: now)
-                    if existingLibraryTracks[file.url.path] == nil {
-                        deduplicated += 1
-                    } else {
-                        updated += 1
-                    }
-                    continue
-                }
-
-                if let snapshot = existingLibraryTracks[file.url.path] {
-                    try updateTrackWithHash(
-                        db: db,
-                        libraryId: libraryId,
-                        trackId: snapshot.trackId,
-                        file: file,
-                        contentHash: contentHash,
-                        updatedAt: now
-                    )
-                    try playlistRepository.ensureInMasterPlaylist(db: db, trackId: snapshot.trackId, addedAt: now)
-                    updated += 1
-                } else {
-                    let trackId = try insertTrack(
-                        db: db,
-                        libraryId: libraryId,
-                        file: file,
-                        contentHash: contentHash,
-                        updatedAt: now
-                    )
-                    try upsertLibraryTrack(
-                        db: db,
-                        libraryId: libraryId,
-                        trackId: trackId,
-                        file: file
-                    )
-                    try playlistRepository.ensureInMasterPlaylist(db: db, trackId: trackId, addedAt: now)
-                    inserted += 1
-                }
-            }
-
-            var removed = 0
-            for (path, snapshot) in existingLibraryTracks where !seenPaths.contains(path) {
-                try deleteLibraryTrack(db: db, libraryId: libraryId, filePath: path)
-                if try shouldDeleteTrack(db: db, trackId: snapshot.trackId) {
-                    try deleteTrack(db: db, trackId: snapshot.trackId)
-                } else if !FileManager.default.fileExists(atPath: snapshot.canonicalFilePath) {
-                    try repointCanonicalPathIfNeeded(db: db, trackId: snapshot.trackId)
-                }
-                removed += 1
-            }
-
-            try playlistRepository.reorderMasterPlaylist(db: db)
-
-            let counts = try playlistRepository.masterPlaylistCounts(db: db)
-            return TrackSyncSummary(
-                inserted: inserted,
-                updated: updated,
-                removed: removed,
-                deduplicated: deduplicated,
-                total: counts.total,
-                missingLyrics: counts.missingLyrics
-            )
-        }
-    }
-
-    func syncAll(libraries: [LibraryRecord]) throws -> TrackSyncSummary {
-        var inserted = 0
-        var updated = 0
-        var removed = 0
-        var deduplicated = 0
-
-        for library in libraries {
-            let summary = try sync(libraryId: library.id, folderURL: library.url)
-            inserted += summary.inserted
-            updated += summary.updated
-            removed += summary.removed
-            deduplicated += summary.deduplicated
-        }
-
-        let counts = try playlistRepository.masterPlaylistCounts()
-        return TrackSyncSummary(
-            inserted: inserted,
-            updated: updated,
-            removed: removed,
-            deduplicated: deduplicated,
-            total: counts.total,
-            missingLyrics: counts.missingLyrics
-        )
-    }
+    // MARK: 查询
 
     func masterPlaylistTracks(
         keyword: String? = nil,
@@ -206,6 +56,16 @@ final class TrackRepository {
             return TrackRecord.read(from: statement)
         }
     }
+
+    func missingLyricTracksInMaster() throws -> [TrackRecord] {
+        try masterPlaylistTracks(missingLyricsOnly: true)
+    }
+
+    func masterPlaylistCounts() throws -> (total: Int, missingLyrics: Int) {
+        try playlistRepository.masterPlaylistCounts()
+    }
+
+    // MARK: 音乐库删除
 
     func removeLibrary(libraryId: Int64) throws -> Set<Int64> {
         try database.write { db in
@@ -256,208 +116,9 @@ final class TrackRepository {
         }
     }
 
-    func missingLyricTracksInMaster() throws -> [TrackRecord] {
-        try masterPlaylistTracks(missingLyricsOnly: true)
-    }
+    // MARK: 与 sync 引擎共享的底层写入助手(故为 internal, 供 TrackRepository_Sync.swift 调用)
 
-    func masterPlaylistCounts() throws -> (total: Int, missingLyrics: Int) {
-        try playlistRepository.masterPlaylistCounts()
-    }
-
-    private struct LibraryTrackSnapshot {
-        let trackId: Int64
-        let mtime: TimeInterval
-        let size: Int64
-        let contentHash: String?
-        let canonicalFilePath: String
-    }
-
-    private func trackId(forContentHash hash: String, db: OpaquePointer) throws -> Int64? {
-        let sql = "SELECT id FROM tracks WHERE content_hash = ? LIMIT 1;"
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_text(statement, 1, hash, -1, Self.sqliteTransient)
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            return nil
-        }
-        return sqlite3_column_int64(statement, 0)
-    }
-
-    private func linkExistingTrack(
-        db: OpaquePointer,
-        libraryId: Int64,
-        trackId: Int64,
-        file: ScannedAudioFile,
-        updatedAt: TimeInterval
-    ) throws {
-        try upsertLibraryTrack(db: db, libraryId: libraryId, trackId: trackId, file: file)
-        if let track = try fetchTrackSnapshot(db: db, trackId: trackId),
-           !FileManager.default.fileExists(atPath: track.filePath) {
-            try updateTrackPathAndMetadata(
-                db: db,
-                trackId: trackId,
-                libraryId: libraryId,
-                file: file,
-                contentHash: try TrackContentHasher.hash(fileURL: file.url),
-                updatedAt: updatedAt
-            )
-        } else {
-            try updateHasLyric(db: db, trackId: trackId, hasLyric: file.hasLyric)
-        }
-    }
-
-    private func fetchTrackSnapshot(db: OpaquePointer, trackId: Int64) throws -> (filePath: String, contentHash: String?)? {
-        let sql = "SELECT file_path, content_hash FROM tracks WHERE id = ? LIMIT 1;"
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, trackId)
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            return nil
-        }
-        let hash = sqlite3_column_type(statement, 1) == SQLITE_NULL
-            ? nil
-            : String(cString: sqlite3_column_text(statement, 1))
-        return (String(cString: sqlite3_column_text(statement, 0)), hash)
-    }
-
-    private func insertTrack(
-        db: OpaquePointer,
-        libraryId: Int64,
-        file: ScannedAudioFile,
-        contentHash: String,
-        updatedAt: TimeInterval
-    ) throws -> Int64 {
-        let metadata = TrackMetadataReader.read(from: file.url)
-        let sql = """
-        INSERT INTO tracks (
-            library_id, file_path, file_name, file_mtime, file_size,
-            title, artist, album, duration, has_lyric, updated_at, content_hash
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-        """
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_text(statement, 2, file.url.path, -1, Self.sqliteTransient)
-        bindFileAndMetadata(
-            statement: statement,
-            file: file,
-            metadata: metadata,
-            hasLyric: file.hasLyric,
-            updatedAt: updatedAt,
-            startingAt: 3
-        )
-        sqlite3_bind_text(statement, 12, contentHash, -1, Self.sqliteTransient)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-        return sqlite3_last_insert_rowid(db)
-    }
-
-    private func updateTrackWithHash(
-        db: OpaquePointer,
-        libraryId: Int64,
-        trackId: Int64,
-        file: ScannedAudioFile,
-        contentHash: String,
-        updatedAt: TimeInterval
-    ) throws {
-        let metadata = TrackMetadataReader.read(from: file.url)
-        let sql = """
-        UPDATE tracks SET
-            library_id = ?, file_path = ?, file_name = ?, file_mtime = ?, file_size = ?,
-            title = ?, artist = ?, album = ?, duration = ?,
-            has_lyric = ?, updated_at = ?, content_hash = ?
-        WHERE id = ?;
-        """
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_text(statement, 2, file.url.path, -1, Self.sqliteTransient)
-        bindFileAndMetadata(
-            statement: statement,
-            file: file,
-            metadata: metadata,
-            hasLyric: file.hasLyric,
-            updatedAt: updatedAt,
-            startingAt: 3
-        )
-        sqlite3_bind_text(statement, 12, contentHash, -1, Self.sqliteTransient)
-        sqlite3_bind_int64(statement, 13, trackId)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-        try upsertLibraryTrack(db: db, libraryId: libraryId, trackId: trackId, file: file)
-    }
-
-    private func updateTrackPathAndMetadata(
-        db: OpaquePointer,
-        trackId: Int64,
-        libraryId: Int64,
-        file: ScannedAudioFile,
-        contentHash: String,
-        updatedAt: TimeInterval
-    ) throws {
-        let metadata = TrackMetadataReader.read(from: file.url)
-        let sql = """
-        UPDATE tracks SET
-            library_id = ?, file_path = ?, file_name = ?, file_mtime = ?, file_size = ?,
-            title = ?, artist = ?, album = ?, duration = ?,
-            has_lyric = ?, updated_at = ?, content_hash = ?
-        WHERE id = ?;
-        """
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_text(statement, 2, file.url.path, -1, Self.sqliteTransient)
-        bindFileAndMetadata(
-            statement: statement,
-            file: file,
-            metadata: metadata,
-            hasLyric: file.hasLyric,
-            updatedAt: updatedAt,
-            startingAt: 3
-        )
-        sqlite3_bind_text(statement, 12, contentHash, -1, Self.sqliteTransient)
-        sqlite3_bind_int64(statement, 13, trackId)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-    }
-
-    private func upsertLibraryTrack(
-        db: OpaquePointer,
-        libraryId: Int64,
-        trackId: Int64,
-        file: ScannedAudioFile
-    ) throws {
-        let sql = """
-        INSERT OR REPLACE INTO library_tracks (library_id, track_id, file_path, file_mtime, file_size)
-        VALUES (?, ?, ?, ?, ?);
-        """
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_int64(statement, 2, trackId)
-        sqlite3_bind_text(statement, 3, file.url.path, -1, Self.sqliteTransient)
-        sqlite3_bind_double(statement, 4, file.mtime)
-        sqlite3_bind_int64(statement, 5, file.size)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-    }
-
-    private func deleteLibraryTrack(db: OpaquePointer, libraryId: Int64, filePath: String) throws {
-        let sql = "DELETE FROM library_tracks WHERE library_id = ? AND file_path = ?;"
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, libraryId)
-        sqlite3_bind_text(statement, 2, filePath, -1, Self.sqliteTransient)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-    }
-
-    private func shouldDeleteTrack(db: OpaquePointer, trackId: Int64) throws -> Bool {
+    func shouldDeleteTrack(db: OpaquePointer, trackId: Int64) throws -> Bool {
         let sql = "SELECT COUNT(*) FROM library_tracks WHERE track_id = ?;"
         let statement = try database.prepare(db, sql: sql)
         defer { sqlite3_finalize(statement) }
@@ -468,7 +129,7 @@ final class TrackRepository {
         return sqlite3_column_int(statement, 0) == 0
     }
 
-    private func deleteTrack(db: OpaquePointer, trackId: Int64) throws {
+    func deleteTrack(db: OpaquePointer, trackId: Int64) throws {
         let sql = "DELETE FROM tracks WHERE id = ?;"
         let statement = try database.prepare(db, sql: sql)
         defer { sqlite3_finalize(statement) }
@@ -477,6 +138,126 @@ final class TrackRepository {
             throw AppDatabaseError.stepFailed(database.errorMessage(db))
         }
     }
+
+    func repointCanonicalPathIfNeeded(db: OpaquePointer, trackId: Int64) throws {
+        let sql = """
+        SELECT file_path, library_id, file_mtime, file_size
+        FROM library_tracks
+        WHERE track_id = ?
+        ORDER BY file_mtime DESC
+        LIMIT 1;
+        """
+        let statement = try database.prepare(db, sql: sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, trackId)
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            return
+        }
+        let path = String(cString: sqlite3_column_text(statement, 0))
+        let libraryId = sqlite3_column_int64(statement, 1)
+        let fileURL = URL(fileURLWithPath: path)
+        guard FileManager.default.fileExists(atPath: path) else {
+            return
+        }
+        let file = ScannedAudioFile(
+            url: fileURL,
+            fileName: fileURL.lastPathComponent,
+            mtime: sqlite3_column_double(statement, 2),
+            size: sqlite3_column_int64(statement, 3),
+            hasLyric: FileManager.default.fileExists(
+                atPath: fileURL.deletingPathExtension().appendingPathExtension("lrc").path
+            )
+        )
+        try updateTrackPathAndMetadata(
+            db: db,
+            trackId: trackId,
+            libraryId: libraryId,
+            file: file,
+            contentHash: try TrackContentHasher.hash(fileURL: fileURL),
+            updatedAt: Date().timeIntervalSince1970
+        )
+    }
+
+    func updateTrackPathAndMetadata(
+        db: OpaquePointer,
+        trackId: Int64,
+        libraryId: Int64,
+        file: ScannedAudioFile,
+        contentHash: String,
+        updatedAt: TimeInterval
+    ) throws {
+        let metadata = TrackMetadataReader.read(from: file.url)
+        let sql = """
+        UPDATE tracks SET
+            library_id = ?, file_path = ?, file_name = ?, file_mtime = ?, file_size = ?,
+            title = ?, artist = ?, album = ?, duration = ?,
+            has_lyric = ?, updated_at = ?, content_hash = ?
+        WHERE id = ?;
+        """
+        let statement = try database.prepare(db, sql: sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int64(statement, 1, libraryId)
+        sqlite3_bind_text(statement, 2, file.url.path, -1, Self.sqliteTransient)
+        bindFileAndMetadata(
+            statement: statement,
+            file: file,
+            metadata: metadata,
+            hasLyric: file.hasLyric,
+            updatedAt: updatedAt,
+            startingAt: 3
+        )
+        sqlite3_bind_text(statement, 12, contentHash, -1, Self.sqliteTransient)
+        sqlite3_bind_int64(statement, 13, trackId)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppDatabaseError.stepFailed(database.errorMessage(db))
+        }
+    }
+
+    func updateHasLyric(db: OpaquePointer, trackId: Int64, hasLyric: Bool) throws {
+        let sql = "UPDATE tracks SET has_lyric = ?, updated_at = ? WHERE id = ?;"
+        let statement = try database.prepare(db, sql: sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_int(statement, 1, hasLyric ? 1 : 0)
+        sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
+        sqlite3_bind_int64(statement, 3, trackId)
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw AppDatabaseError.stepFailed(database.errorMessage(db))
+        }
+    }
+
+    func bindFileAndMetadata(
+        statement: OpaquePointer,
+        file: ScannedAudioFile,
+        metadata: TrackMetadataReader.Metadata,
+        hasLyric: Bool,
+        updatedAt: TimeInterval,
+        startingAt: Int32
+    ) {
+        var index = startingAt
+        sqlite3_bind_text(statement, index, file.fileName, -1, Self.sqliteTransient)
+        index += 1
+        sqlite3_bind_double(statement, index, file.mtime)
+        index += 1
+        sqlite3_bind_int64(statement, index, file.size)
+        index += 1
+        bindOptionalText(statement, index: index, value: metadata.title)
+        index += 1
+        bindOptionalText(statement, index: index, value: metadata.artist)
+        index += 1
+        bindOptionalText(statement, index: index, value: metadata.album)
+        index += 1
+        if let duration = metadata.duration {
+            sqlite3_bind_double(statement, index, duration)
+        } else {
+            sqlite3_bind_null(statement, index)
+        }
+        index += 1
+        sqlite3_bind_int(statement, index, hasLyric ? 1 : 0)
+        index += 1
+        sqlite3_bind_double(statement, index, updatedAt)
+    }
+
+    // MARK: removeLibrary 专用助手
 
     private func repointLibraryIdIfNeeded(
         db: OpaquePointer,
@@ -541,89 +322,6 @@ final class TrackRepository {
         }
     }
 
-    private func repointCanonicalPathIfNeeded(db: OpaquePointer, trackId: Int64) throws {
-        let sql = """
-        SELECT file_path, library_id, file_mtime, file_size
-        FROM library_tracks
-        WHERE track_id = ?
-        ORDER BY file_mtime DESC
-        LIMIT 1;
-        """
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int64(statement, 1, trackId)
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            return
-        }
-        let path = String(cString: sqlite3_column_text(statement, 0))
-        let libraryId = sqlite3_column_int64(statement, 1)
-        let fileURL = URL(fileURLWithPath: path)
-        guard FileManager.default.fileExists(atPath: path) else {
-            return
-        }
-        let file = ScannedAudioFile(
-            url: fileURL,
-            fileName: fileURL.lastPathComponent,
-            mtime: sqlite3_column_double(statement, 2),
-            size: sqlite3_column_int64(statement, 3),
-            hasLyric: FileManager.default.fileExists(
-                atPath: fileURL.deletingPathExtension().appendingPathExtension("lrc").path
-            )
-        )
-        try updateTrackPathAndMetadata(
-            db: db,
-            trackId: trackId,
-            libraryId: libraryId,
-            file: file,
-            contentHash: try TrackContentHasher.hash(fileURL: fileURL),
-            updatedAt: Date().timeIntervalSince1970
-        )
-    }
-
-    private func bindFileAndMetadata(
-        statement: OpaquePointer,
-        file: ScannedAudioFile,
-        metadata: TrackMetadataReader.Metadata,
-        hasLyric: Bool,
-        updatedAt: TimeInterval,
-        startingAt: Int32
-    ) {
-        var index = startingAt
-        sqlite3_bind_text(statement, index, file.fileName, -1, Self.sqliteTransient)
-        index += 1
-        sqlite3_bind_double(statement, index, file.mtime)
-        index += 1
-        sqlite3_bind_int64(statement, index, file.size)
-        index += 1
-        bindOptionalText(statement, index: index, value: metadata.title)
-        index += 1
-        bindOptionalText(statement, index: index, value: metadata.artist)
-        index += 1
-        bindOptionalText(statement, index: index, value: metadata.album)
-        index += 1
-        if let duration = metadata.duration {
-            sqlite3_bind_double(statement, index, duration)
-        } else {
-            sqlite3_bind_null(statement, index)
-        }
-        index += 1
-        sqlite3_bind_int(statement, index, hasLyric ? 1 : 0)
-        index += 1
-        sqlite3_bind_double(statement, index, updatedAt)
-    }
-
-    private func updateHasLyric(db: OpaquePointer, trackId: Int64, hasLyric: Bool) throws {
-        let sql = "UPDATE tracks SET has_lyric = ?, updated_at = ? WHERE id = ?;"
-        let statement = try database.prepare(db, sql: sql)
-        defer { sqlite3_finalize(statement) }
-        sqlite3_bind_int(statement, 1, hasLyric ? 1 : 0)
-        sqlite3_bind_double(statement, 2, Date().timeIntervalSince1970)
-        sqlite3_bind_int64(statement, 3, trackId)
-        guard sqlite3_step(statement) == SQLITE_DONE else {
-            throw AppDatabaseError.stepFailed(database.errorMessage(db))
-        }
-    }
-
     private func bindOptionalText(_ statement: OpaquePointer, index: Int32, value: String?) {
         if let value {
             sqlite3_bind_text(statement, index, value, -1, Self.sqliteTransient)
@@ -632,5 +330,5 @@ final class TrackRepository {
         }
     }
 
-    private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+    static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 }

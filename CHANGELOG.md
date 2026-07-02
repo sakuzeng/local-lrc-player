@@ -2,6 +2,15 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-07-02
+
+本日为代码组织重构，无用户可见行为变化：清理遗留代码、按职责拆分过大的仓储文件。
+
+### Changed
+
+- 删除遗留死代码 `MenuBarLyricsView.swift`（全项目零引用，菜单栏歌词已由 `MenuBarLyricsController` + `MenuBarLyricsStatusImage` 承担）。
+- 拆分 `TrackRepository`（原 636 行）：扫描 + 增量 sync 引擎移入新文件 `TrackRepository_Sync.swift`（`sync` / `syncAll` + sync 专属助手 + `TrackSyncSummary`），主文件仅保留查询 / CRUD / `removeLibrary` 与两者共享的底层写入助手。对外接口与调用点不变，`test.sh` 无需改动。因 Swift `private` 为文件级作用域，`database` / `playlistRepository` 及被 sync 复用的助手放宽为 internal。
+
 ## 2026-06-23
 
 本日主要交付：主窗口 UI 美化（工具栏/毛玻璃/播放区/歌词/列表）、设置窗口、空状态与窗口记忆、播放模式（schema v3）、列表顶栏定位、`doc/ui.md` 工具栏经验文档。
