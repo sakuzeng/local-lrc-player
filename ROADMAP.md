@@ -5,7 +5,7 @@
 ## Known Bugs
 
 - 暂无已确认但未修复的问题。后续发现 bug 时先记录在这里，修复后移到 `CHANGELOG.md` 的 `Fixed`。
-- 感觉菜单栏歌词占满时最后一个字有点不全
+
 ## High Priority
 
 界面美化（播放区视觉重心、封面等待 Medium 项）——以下 High Priority UI 项已于 2026-06-23 阶段性完成：

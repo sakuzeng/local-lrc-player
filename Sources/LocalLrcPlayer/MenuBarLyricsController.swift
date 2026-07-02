@@ -598,7 +598,9 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
 
     private func textAreaWidth(for totalWidth: CGFloat) -> CGFloat {
         let iconBlock: CGFloat = currentSettings.menuBarLyricsShowIcon ? 18 : 0
-        return max(totalWidth - iconBlock - 8, 20)
+        // 6pt 左内边距 + 8pt 右侧留白。右侧留白让撑满滚动到末尾时, 末字右缘内缩到位图裁剪区
+        // 内部, 避免字形墨迹超出 advance 宽度被剃掉最后一个字。
+        return max(totalWidth - iconBlock - 14, 20)
     }
 
     private static func truncatedText(_ text: String, maxWidth: CGFloat, font: NSFont) -> String {
