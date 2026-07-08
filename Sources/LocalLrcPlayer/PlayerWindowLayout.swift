@@ -16,6 +16,18 @@ final class PlayerWindowLayout {
     let locatePlayingButton = NSButton(title: "", target: nil, action: nil)
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
+    let volumeSlider = NSSlider(value: 1, minValue: 0, maxValue: 1, target: nil, action: nil)
+    let volumeButton = NSButton(title: "", target: nil, action: nil)
+
+    private let nowPlayingArtView = NSImageView()
+    private let nowPlayingTitleLabel = NSTextField(labelWithString: "")
+    private let nowPlayingArtistLabel = NSTextField(labelWithString: "")
+    private let nowPlayingInfoStack = NSStackView()
+    private let nowPlayingBar = NSView()
+    private var nowPlayingBarHeightConstraint: NSLayoutConstraint!
+    private let ambientBackgroundView = AmbientBackgroundView()
+    private let volumePopover = NSPopover()
+    private let seekPreviewLabel = NSTextField(labelWithString: "")
 
     private let trackListEmptyState = EmptyStateView()
     private let listContainer = NSView()
@@ -123,9 +135,18 @@ final class PlayerWindowLayout {
         root.spacing = 12
         root.translatesAutoresizingMaskIntoConstraints = false
 
+        // 氛围背景在毛玻璃之上、内容之下。
+        ambientBackgroundView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(ambientBackgroundView)
+
         contentView.addSubview(root)
         let layoutGuide = contentView.safeAreaLayoutGuide
         NSLayoutConstraint.activate([
+            ambientBackgroundView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            ambientBackgroundView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            ambientBackgroundView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            ambientBackgroundView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+
             root.leadingAnchor.constraint(equalTo: layoutGuide.leadingAnchor, constant: 16),
             root.trailingAnchor.constraint(equalTo: layoutGuide.trailingAnchor, constant: -16),
             root.topAnchor.constraint(equalTo: layoutGuide.topAnchor, constant: 8),
@@ -203,14 +224,29 @@ final class PlayerWindowLayout {
         transportBar.translatesAutoresizingMaskIntoConstraints = false
         transportBar.addSubview(transportRow)
 
-        let progressRow = NSStackView(views: [progressSlider, timeLabel])
+        configureNowPlayingInfo()
+        configureVolumeControls()
+
+        let progressRow = NSStackView(views: [progressSlider, timeLabel, volumeButton])
         progressRow.orientation = .horizontal
         progressRow.alignment = .centerY
         progressRow.spacing = 12
+        progressRow.setCustomSpacing(8, after: timeLabel)
         progressRow.translatesAutoresizingMaskIntoConstraints = false
 
         progressBar.translatesAutoresizingMaskIntoConstraints = false
         progressBar.addSubview(progressRow)
+
+        // 进度条悬停时间气泡：frame 手动摆（跟随指针），不进 Auto Layout。
+        seekPreviewLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+        seekPreviewLabel.textColor = .secondaryLabelColor
+        seekPreviewLabel.alignment = .center
+        seekPreviewLabel.wantsLayer = true
+        seekPreviewLabel.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.9).cgColor
+        seekPreviewLabel.layer?.cornerRadius = 7
+        seekPreviewLabel.layer?.cornerCurve = .continuous
+        seekPreviewLabel.isHidden = true
+        progressBar.addSubview(seekPreviewLabel)
 
         NSLayoutConstraint.activate([
             transportBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight),
@@ -222,6 +258,137 @@ final class PlayerWindowLayout {
             progressRow.trailingAnchor.constraint(equalTo: progressBar.trailingAnchor, constant: -Self.lyricsHorizontalInset),
             progressRow.centerYAnchor.constraint(equalTo: progressBar.centerYAnchor)
         ])
+    }
+
+    private func configureNowPlayingInfo() {
+        nowPlayingArtView.wantsLayer = true
+        nowPlayingArtView.layer?.cornerRadius = 6
+        nowPlayingArtView.layer?.cornerCurve = .continuous
+        nowPlayingArtView.layer?.masksToBounds = true
+        nowPlayingArtView.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        nowPlayingArtView.imageScaling = .scaleProportionallyUpOrDown
+        nowPlayingArtView.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            nowPlayingArtView.widthAnchor.constraint(equalToConstant: 36),
+            nowPlayingArtView.heightAnchor.constraint(equalToConstant: 36)
+        ])
+
+        nowPlayingTitleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        nowPlayingTitleLabel.lineBreakMode = .byTruncatingTail
+        nowPlayingArtistLabel.font = .systemFont(ofSize: 11)
+        nowPlayingArtistLabel.textColor = .secondaryLabelColor
+        nowPlayingArtistLabel.lineBreakMode = .byTruncatingTail
+
+        let textStack = NSStackView(views: [nowPlayingTitleLabel, nowPlayingArtistLabel])
+        textStack.orientation = .vertical
+        textStack.alignment = .leading
+        textStack.spacing = 1
+
+        nowPlayingInfoStack.orientation = .horizontal
+        nowPlayingInfoStack.alignment = .centerY
+        nowPlayingInfoStack.spacing = 8
+        nowPlayingInfoStack.addArrangedSubview(nowPlayingArtView)
+        nowPlayingInfoStack.addArrangedSubview(textStack)
+        nowPlayingInfoStack.isHidden = true
+
+        // 文本可截断，列宽（240–380pt）内不撑破布局。
+        nowPlayingTitleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        nowPlayingArtistLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    }
+
+    private func configureVolumeControls() {
+        volumeButton.image = Self.symbolImage("speaker.wave.2.fill", pointSize: 13, weight: .medium)
+        volumeButton.imagePosition = .imageOnly
+        volumeButton.isBordered = false
+        volumeButton.bezelStyle = .regularSquare
+        volumeButton.contentTintColor = .secondaryLabelColor
+        volumeButton.toolTip = "音量"
+        volumeButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        // 竖向滑杆装在 transient popover 里（下小上大）；必须显式 isVertical，仅靠约束不可靠。
+        volumeSlider.isVertical = true
+        volumeSlider.translatesAutoresizingMaskIntoConstraints = false
+        let content = NSView()
+        content.addSubview(volumeSlider)
+        NSLayoutConstraint.activate([
+            content.widthAnchor.constraint(equalToConstant: 40),
+            content.heightAnchor.constraint(equalToConstant: 124),
+            volumeSlider.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+            volumeSlider.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            volumeSlider.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -12),
+            volumeSlider.widthAnchor.constraint(equalToConstant: 21)
+        ])
+
+        let contentController = NSViewController()
+        contentController.view = content
+        volumePopover.contentViewController = contentController
+        volumePopover.behavior = .transient
+    }
+
+    func showSeekPreview(text: String, fraction: Double) {
+        seekPreviewLabel.stringValue = text
+        seekPreviewLabel.sizeToFit()
+
+        let bubbleSize = NSSize(
+            width: seekPreviewLabel.frame.width + 10,
+            height: seekPreviewLabel.frame.height + 2
+        )
+        let sliderFrame = progressSlider.convert(progressSlider.bounds, to: progressBar)
+        let knobSize: CGFloat = 14
+        let knobX = sliderFrame.minX + knobSize / 2 + (sliderFrame.width - knobSize) * CGFloat(fraction)
+        let x = min(
+            max(knobX - bubbleSize.width / 2, sliderFrame.minX),
+            sliderFrame.maxX - bubbleSize.width
+        )
+        seekPreviewLabel.frame = NSRect(
+            x: x,
+            y: sliderFrame.maxY + 1,
+            width: bubbleSize.width,
+            height: bubbleSize.height
+        )
+        seekPreviewLabel.isHidden = false
+    }
+
+    func hideSeekPreview() {
+        seekPreviewLabel.isHidden = true
+    }
+
+    func toggleVolumePopover() {
+        if volumePopover.isShown {
+            volumePopover.performClose(nil)
+        } else {
+            volumePopover.show(relativeTo: volumeButton.bounds, of: volumeButton, preferredEdge: .maxY)
+        }
+    }
+
+    /// 歌词顶栏信息块：无标题时整栏折叠；封面为空时显示占位音符。
+    /// 封面同时驱动氛围背景：有图取主色淡入，无图淡出回纯毛玻璃。
+    func updateNowPlaying(title: String?, artist: String?, artwork: NSImage?) {
+        guard let title, !title.isEmpty else {
+            nowPlayingInfoStack.isHidden = true
+            nowPlayingBar.isHidden = true
+            nowPlayingBarHeightConstraint.constant = 0
+            nowPlayingArtView.image = nil
+            ambientBackgroundView.apply(artwork: nil)
+            return
+        }
+
+        nowPlayingInfoStack.isHidden = false
+        nowPlayingBar.isHidden = false
+        nowPlayingBarHeightConstraint.constant = 48
+        nowPlayingTitleLabel.stringValue = title
+        let artistText = artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        nowPlayingArtistLabel.stringValue = artistText
+        nowPlayingArtistLabel.isHidden = artistText.isEmpty
+
+        if let artwork {
+            nowPlayingArtView.imageScaling = .scaleProportionallyUpOrDown
+            nowPlayingArtView.image = artwork
+        } else {
+            nowPlayingArtView.imageScaling = .scaleNone
+            nowPlayingArtView.image = UIChrome.symbolImage("music.note", pointSize: 14, weight: .medium)
+        }
+        ambientBackgroundView.apply(artwork: artwork)
     }
 
     private func configureListContainer() {
@@ -283,14 +450,32 @@ final class PlayerWindowLayout {
     private func configureLyricsContainer() {
         lyricsContainer.translatesAutoresizingMaskIntoConstraints = false
         lyricsView.translatesAutoresizingMaskIntoConstraints = false
+        nowPlayingBar.translatesAutoresizingMaskIntoConstraints = false
+        nowPlayingInfoStack.translatesAutoresizingMaskIntoConstraints = false
 
+        // 歌词顶栏：正在播放信息，水平居中呼应歌词居中排版；两侧至少留 28pt。
+        // 无曲目时高度收到 0，不占歌词空间。
+        nowPlayingBar.addSubview(nowPlayingInfoStack)
+        nowPlayingBar.isHidden = true
+        nowPlayingBarHeightConstraint = nowPlayingBar.heightAnchor.constraint(equalToConstant: 0)
+        nowPlayingBarHeightConstraint.isActive = true
+        lyricsContainer.addSubview(nowPlayingBar)
         lyricsContainer.addSubview(lyricsView)
         lyricsContainer.addSubview(progressBar)
 
         NSLayoutConstraint.activate([
+            nowPlayingBar.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
+            nowPlayingBar.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
+            nowPlayingBar.topAnchor.constraint(equalTo: lyricsContainer.topAnchor),
+
+            nowPlayingInfoStack.centerXAnchor.constraint(equalTo: nowPlayingBar.centerXAnchor),
+            nowPlayingInfoStack.leadingAnchor.constraint(greaterThanOrEqualTo: nowPlayingBar.leadingAnchor, constant: Self.lyricsHorizontalInset),
+            nowPlayingInfoStack.trailingAnchor.constraint(lessThanOrEqualTo: nowPlayingBar.trailingAnchor, constant: -Self.lyricsHorizontalInset),
+            nowPlayingInfoStack.centerYAnchor.constraint(equalTo: nowPlayingBar.centerYAnchor),
+
             lyricsView.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
             lyricsView.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
-            lyricsView.topAnchor.constraint(equalTo: lyricsContainer.topAnchor),
+            lyricsView.topAnchor.constraint(equalTo: nowPlayingBar.bottomAnchor),
             lyricsView.bottomAnchor.constraint(equalTo: progressBar.topAnchor),
 
             progressBar.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),

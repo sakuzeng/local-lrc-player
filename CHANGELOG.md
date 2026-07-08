@@ -2,6 +2,45 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-07-08
+
+本日:设计并接入正式 App 图标;播放区信息补全(封面/歌名/歌手 + 封面下载缓存);音量控制(schema v4);歌词点击 seek 与排版升级;ROADMAP 登记界面美化第二阶段与音乐文件元数据写入计划。
+
+### Added
+
+- 正式 App 图标：靛蓝→紫渐变圆角方形 + 白色音符 + 三条歌词线（中间当前行高亮）。
+  `assets/render_app_icon.swift`（CoreGraphics 一次性渲染脚本）→ `assets/AppIcon-1024.png`
+  → `assets/make_icns.sh`（sips 降采样 + iconutil）→ `assets/AppIcon.icns`；
+  `build.sh` 拷贝 icns 进 Resources 并在 Info.plist 写入 `CFBundleIconFile`。
+- 播放区正在播放信息：进度条行左侧 36pt 圆角封面 + 歌名/歌手双行（`PlayerWindowLayout.updateNowPlaying`）。
+  封面优先读内嵌图（`TrackMetadataReader.artworkData`）；无内嵌图时复用歌词搜索评分挑最可靠候选下载专辑图
+  （网易云 song/detail picUrl / QQ albumMid 图床），只写 `~/Library/Caches/LocalLrcPlayer/Artwork/`
+  （`ArtworkCache` + `ArtworkDownloadService`），不修改音频文件；每曲目每次运行只自动尝试一次，静默失败。
+- 音量控制：进度条行右端音量滑杆；`PlaybackController.volume` 播放重建时套用；
+  `player_state.volume`（schema v4 迁移）持久化，拖动防抖落库；数据库测试补默认值/持久化/越界钳制断言。
+- 点击歌词行 seek：`LyricsView.onLineClicked` 按行高命中回调行时间；已加载即 seek，未加载记为恢复位置。
+
+- 主题色氛围背景（`AmbientBackgroundView`）：封面 1x1 下采样取平均色（拉饱和度、压亮度后使用），
+  毛玻璃上叠左上/右下两团色相微错开的大半径 radial 色斑，切歌 1.2s 交叉淡入淡出；无封面淡出回纯毛玻璃。
+
+- 进度条悬停反馈：hover/拖动时轨道 4→6pt、圆点放大，指针位置显示 mm:ss 时间气泡并跟随移动
+  （`SeekSlider.onHoverFraction` → 控制器按时长换算 → `PlayerWindowLayout.showSeekPreview`）。
+
+### Fixed
+
+- 歌词行切换抖动/不流畅（当日排版升级引入的回归）：字号插值逐帧改变行高导致全文 reflow、
+  滚动目标中途漂移。改为段落固定行高 40pt（min=max）+ baselineOffset 垂直居中，
+  行间空行 `\n\n` 改 `paragraphSpacing 14`；字号动画只放大字形，不再引起布局抖动。
+
+### Changed
+
+- 歌词当前行排版升级：22pt semibold → 26pt bold，行距 10 → 12（后改为固定行高 40 + 段后距 14，见 Fixed）。
+- 歌词滚动动画改为带轻微过冲的 spring 曲线（0.5s，控制点 0.2/1.12/0.35/1.0）。
+- 无曲目时歌词顶栏高度收到 0（原来隐藏但保留 48pt 空白）。
+- 正在播放信息块最终落位歌词区顶部（`nowPlayingBar`，水平居中，无曲目时隐藏）；
+  进度条行改为 进度条 + 时间 + 喇叭按钮，音量为点喇叭弹出的竖向 popover 滑杆
+  （`isVertical = true`，仅靠约束高宽比不生效）。
+
 ## 2026-07-02
 
 本日:修复菜单栏歌词末字被切;代码组织重构(清理遗留代码、按职责拆分过大的仓储文件)。

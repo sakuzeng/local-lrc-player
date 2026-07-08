@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘�
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 3`（v1 基线 + v2 窗口列 + v3 播放模式） |
+| Schema 版本 | `PRAGMA user_version = 4`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -97,6 +97,8 @@ erDiagram
         REAL window_origin_y
         REAL window_width
         REAL window_height
+        TEXT playback_mode
+        REAL volume
     }
 ```
 
@@ -181,6 +183,7 @@ erDiagram
 | `window_width` | REAL | 主窗口宽度 |
 | `window_height` | REAL | 主窗口高度 |
 | `playback_mode` | TEXT | 播放模式（v3；`sequential` / `repeatOne` / `shuffle`，默认 `sequential`） |
+| `volume` | REAL | 音量 0–1（v4；默认 1，读写时钳制到区间内） |
 
 ---
 
@@ -275,7 +278,7 @@ SettingsWindowController → LibraryRepository.deleteLibrary(id)
 ./test.sh
 ```
 
-覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理。
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理、音量默认值/持久化/越界钳制。
 
 ---
 

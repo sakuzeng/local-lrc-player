@@ -12,11 +12,11 @@
 ┌─ NSToolbar（右侧）────────────────────────────────────┐
 │  [文件夹 | 刷新]  ←flexibleSpace→  [搜索框]          │
 ├──────────────────────────────────────────────────────┤
-│  曲目列表          │  歌词区                          │
+│  曲目列表          │  [封面|歌名/歌手] ← nowPlayingBar │
 │  ┌ listHeaderBar ─┐│                                  │
 │  │ 歌曲·N    [定位]││  LyricsView                      │
 │  TrackTableView    │                                  │
-│  [◀ ▶ ▶] [模式]    │  [━━━━ 进度条 ━━━━] 00:00/03:45  │
+│  [◀ ▶ ▶] [模式]    │  [━━━ 进度条 ━━━] 00:00/03:45 [🔊]│
 ├──────────────────────────────────────────────────────┤
 │  statusLabel（全宽）                                    │
 └──────────────────────────────────────────────────────┘
@@ -28,11 +28,14 @@
 | 列表顶栏 `listHeaderBar` | 当前列表标题（日后可换播放列表名）+ 列表导航按钮 |
 | 列表导航 `listNavigationStack` | 与列表强相关的操作（定位正在播放等），便于横向扩展 |
 | 列表底栏 `transportBar` | 传输控制 pill + 播放模式（在 split 左列内） |
-| 歌词底栏 `progressBar` | 进度条 + 时间，左右 28pt 与歌词 `textContainerInset` 对齐（在 split 右列内） |
+| 歌词顶栏 `nowPlayingBar` | 正在播放信息块（36pt 圆角封面 + 歌名/歌手，可截断，无曲目时隐藏），水平居中呼应歌词居中排版、两侧至少 28pt（在 split 右列内）。封面：内嵌图 → `ArtworkCache`/下载兜底 → 占位音符 |
+| 歌词底栏 `progressBar` | 进度条 + 时间 + 音量喇叭按钮（点击弹 transient popover 竖向滑杆），左右 28pt 与歌词 `textContainerInset` 对齐（在 split 右列内） |
 
 播放底栏放在各自 split 子视图内，不要在 split 外再用 `widthAnchor` 绑定列宽，否则易触发 Auto Layout 冲突导致启动崩溃。
 
-窗口样式：`fullSizeContentView` + `toolbarStyle = .unified` + 全窗 `NSVisualEffectView` 毛玻璃。
+窗口样式：`fullSizeContentView` + `toolbarStyle = .unified` + 全窗 `NSVisualEffectView` 毛玻璃；
+毛玻璃与内容之间夹一层 `AmbientBackgroundView`（封面主色氛围色斑，由 `updateNowPlaying` 的封面参数驱动）。
+歌词顶栏 `nowPlayingBar` 无曲目时高度收 0（`nowPlayingBarHeightConstraint`），信息块用 centerY 居中而非上下 pin，避免高度为 0 时约束冲突。
 
 ---
 

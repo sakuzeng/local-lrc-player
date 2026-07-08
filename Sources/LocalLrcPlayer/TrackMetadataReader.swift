@@ -37,6 +37,16 @@ enum TrackMetadataReader {
         )
     }
 
+    /// 读取内嵌封面（ID3 APIC / FLAC PICTURE / MP4 covr），无则返回 nil。
+    static func artworkData(from url: URL) -> Data? {
+        let asset = AVURLAsset(url: url)
+        let items = AVMetadataItem.metadataItems(
+            from: asset.commonMetadata,
+            filteredByIdentifier: .commonIdentifierArtwork
+        )
+        return items.first?.dataValue
+    }
+
     private static func firstString(in metadata: [AVMetadataItem], identifiers: [AVMetadataIdentifier]) -> String? {
         for identifier in identifiers {
             if let value = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier).first?.stringValue {

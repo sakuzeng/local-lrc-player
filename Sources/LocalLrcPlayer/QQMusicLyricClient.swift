@@ -5,6 +5,7 @@ struct QQMusicSongCandidate {
     let name: String
     let artists: [String]
     let album: String?
+    let albumMid: String?
 }
 
 final class QQMusicLyricClient {
@@ -51,7 +52,8 @@ final class QQMusicLyricClient {
                         songMid: songMid,
                         name: item.songName,
                         artists: item.singer.map(\.name),
-                        album: item.albumName
+                        album: item.albumName,
+                        albumMid: item.album?.mid
                     )
                 }
                 DispatchQueue.main.async { completion(.success(songs)) }
@@ -230,6 +232,7 @@ private struct QQMusicSinger: Decodable {
 }
 
 private struct QQMusicAlbum: Decodable {
+    let mid: String?
     let title: String?
     let name: String?
 }

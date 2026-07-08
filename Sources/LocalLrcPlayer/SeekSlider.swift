@@ -3,6 +3,8 @@ import AppKit
 final class SeekSlider: NSSlider {
     var onTrackingBegan: (() -> Void)?
     var onTrackingEnded: (() -> Void)?
+    /// 悬停/拖动时回调指针位置对应的进度分数(0-1)；nil 表示移出、应隐藏时间气泡。
+    var onHoverFraction: ((Double?) -> Void)?
 
     private(set) var isTrackingMouse = false
     private var isHovering = false
@@ -39,11 +41,33 @@ final class SeekSlider: NSSlider {
         }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
         addTrackingArea(area)
+    }
+
+    /// 与 NSSliderCell 的圆点行程一致：可用宽度 = 总宽 - 圆点直径。
+    func fraction(atX x: CGFloat) -> Double {
+        let knobSize: CGFloat = 14
+        let usable = bounds.width - knobSize
+        guard usable > 0 else {
+            return 0
+        }
+        return min(max(Double((x - knobSize / 2) / usable), 0), 1)
+    }
+
+    func reportHover(fraction: Double?) {
+        onHoverFraction?(fraction)
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard !isTrackingMouse else {
+            return
+        }
+        let x = convert(event.locationInWindow, from: nil).x
+        reportHover(fraction: fraction(atX: x))
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -60,6 +84,7 @@ final class SeekSlider: NSSlider {
         isHovering = false
         if !isTrackingMouse {
             setKnobExpanded(false)
+            reportHover(fraction: nil)
         }
     }
 
@@ -71,6 +96,9 @@ final class SeekSlider: NSSlider {
         onTrackingEnded?()
         isTrackingMouse = false
         setKnobExpanded(isHovering)
+        if !isHovering {
+            reportHover(fraction: nil)
+        }
         redrawFully()
     }
 
@@ -96,9 +124,13 @@ final class SeekSlider: NSSlider {
 private final class SeekSliderCell: NSSliderCell {
     var knobExpanded = false
 
-    private let trackHeight: CGFloat = 4
     private let knobSizeNormal: CGFloat = 11
     private let knobSizeExpanded: CGFloat = 14
+
+    /// hover/拖动时轨道随圆点一起增高。
+    private var trackHeight: CGFloat {
+        knobExpanded ? 6 : 4
+    }
 
     private func visualBarRect(in trackRect: NSRect) -> NSRect {
         NSRect(
@@ -172,7 +204,10 @@ private final class SeekSliderCell: NSSliderCell {
 
     override func continueTracking(last lastPoint: NSPoint, current currentPoint: NSPoint, in controlView: NSView) -> Bool {
         let tracking = super.continueTracking(last: lastPoint, current: currentPoint, in: controlView)
-        (controlView as? SeekSlider)?.redrawFully()
+        if let slider = controlView as? SeekSlider {
+            slider.redrawFully()
+            slider.reportHover(fraction: normalizedProgress())
+        }
         return tracking
     }
 

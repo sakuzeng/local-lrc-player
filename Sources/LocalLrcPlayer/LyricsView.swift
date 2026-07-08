@@ -67,7 +67,7 @@ final class LyricsView: NSScrollView {
         let text = NSMutableString()
         for line in lines {
             if text.length > 0 {
-                text.append("\n\n")
+                text.append("\n")
             }
 
             let start = text.length
@@ -146,6 +146,9 @@ final class LyricsView: NSScrollView {
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
 
+        let click = NSClickGestureRecognizer(target: self, action: #selector(handleLyricClick(_:)))
+        textView.addGestureRecognizer(click)
+
         documentView = textView
         hasVerticalScroller = true
         borderType = .noBorder
@@ -194,9 +197,36 @@ final class LyricsView: NSScrollView {
 
     var onMouseDown: (() -> Void)?
 
+    /// 点击某行歌词时回调该行时间戳（用于 seek）。
+    var onLineClicked: ((TimeInterval) -> Void)?
+
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
         super.mouseDown(with: event)
+    }
+
+    @objc private func handleLyricClick(_ gesture: NSClickGestureRecognizer) {
+        onMouseDown?()
+        guard !lines.isEmpty,
+              let layoutManager = textView.layoutManager,
+              let textContainer = textView.textContainer else {
+            return
+        }
+
+        let point = gesture.location(in: textView)
+        layoutManager.ensureLayout(for: textContainer)
+
+        // 按行高命中，X 不限制，行两侧空白也可点。
+        for (index, range) in lineRanges.enumerated() {
+            let glyphRange = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+            var lineRect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+            lineRect.origin.x += textView.textContainerOrigin.x
+            lineRect.origin.y += textView.textContainerOrigin.y
+            if point.y >= lineRect.minY - 6, point.y <= lineRect.maxY + 6 {
+                onLineClicked?(lines[index].time)
+                return
+            }
+        }
     }
 
     /// 上下留白约为半屏高，使首尾歌词也能滚到视口正中，而不是贴底。
@@ -253,8 +283,9 @@ final class LyricsView: NSScrollView {
 
         if animated {
             NSAnimationContext.runAnimationGroup { context in
-                context.duration = 0.35
-                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                context.duration = 0.5
+                // 控制点带轻微过冲，模拟 spring 回弹落位。
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 1.12, 0.35, 1.0)
                 clipView.animator().setBoundsOrigin(targetOrigin)
             } completionHandler: {
                 self.reflectScrolledClipView(clipView)
@@ -265,10 +296,15 @@ final class LyricsView: NSScrollView {
         }
     }
 
+    /// 固定行高：字号插值动画只放大字形、不改变行框，避免整段 reflow 抖动。
+    private let fixedLineHeight: CGFloat = 40
+
     private func makeParagraphStyle() -> NSParagraphStyle {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        paragraphStyle.lineSpacing = 10
+        paragraphStyle.minimumLineHeight = fixedLineHeight
+        paragraphStyle.maximumLineHeight = fixedLineHeight
+        paragraphStyle.paragraphSpacing = 14
         return paragraphStyle
     }
 
@@ -284,8 +320,8 @@ final class LyricsView: NSScrollView {
         let distance = abs(index - activeIndex)
         if distance == 0 {
             return LyricLineAppearance(
-                fontSize: 22,
-                weight: .semibold,
+                fontSize: 26,
+                weight: .bold,
                 color: .controlAccentColor
             )
         }
@@ -309,10 +345,14 @@ final class LyricsView: NSScrollView {
         for appearance: LyricLineAppearance,
         paragraphStyle: NSParagraphStyle
     ) -> [NSAttributedString.Key: Any] {
-        [
-            .font: NSFont.systemFont(ofSize: appearance.fontSize, weight: appearance.weight),
+        let font = NSFont.systemFont(ofSize: appearance.fontSize, weight: appearance.weight)
+        // 固定行高下小字号会沉底，用 baselineOffset 垂直居中。
+        let baselineOffset = (fixedLineHeight - (font.ascender - font.descender)) / 2
+        return [
+            .font: font,
             .foregroundColor: appearance.color,
-            .paragraphStyle: paragraphStyle
+            .paragraphStyle: paragraphStyle,
+            .baselineOffset: baselineOffset
         ]
     }
 

@@ -307,6 +307,8 @@ final class PlayerStateRepositoryTests {
     func runAll() throws {
         try runIsolated { try self.testDefaultPlaybackModeAfterMigration() }
         try runIsolated { try self.testUpdatePlaybackModePersists() }
+        try runIsolated { try self.testDefaultVolumeAfterMigration() }
+        try runIsolated { try self.testUpdateVolumePersistsAndClamps() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -347,6 +349,21 @@ final class PlayerStateRepositoryTests {
         try repository.updatePlaybackMode(.repeatOne)
         state = try repository.playbackState()
         try assertEqual(state.playbackMode, .repeatOne)
+    }
+
+    private func testDefaultVolumeAfterMigration() throws {
+        let state = try repository.playbackState()
+        try assertEqual(state.volume, 1)
+    }
+
+    private func testUpdateVolumePersistsAndClamps() throws {
+        try repository.updateVolume(0.35)
+        var state = try repository.playbackState()
+        try assertEqual(state.volume, 0.35)
+
+        try repository.updateVolume(1.7)
+        state = try repository.playbackState()
+        try assertEqual(state.volume, 1)
     }
 }
 

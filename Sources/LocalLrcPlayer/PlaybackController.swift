@@ -7,6 +7,13 @@ final class PlaybackController: NSObject {
     private var player: AVPlayer?
     private weak var observedItem: AVPlayerItem?
 
+    /// 0...1；player 每次播放都会重建，所以这里持有并在 play 时套用。
+    var volume: Float = 1 {
+        didSet {
+            player?.volume = volume
+        }
+    }
+
     var isPlaying: Bool {
         player?.timeControlStatus == .playing
     }
@@ -23,6 +30,7 @@ final class PlaybackController: NSObject {
         removeEndObserver()
 
         let player = AVPlayer(url: url)
+        player.volume = volume
         self.player = player
         observedItem = player.currentItem
 

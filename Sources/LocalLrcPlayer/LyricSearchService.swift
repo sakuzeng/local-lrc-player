@@ -309,6 +309,25 @@ final class LyricSearchService {
         )
     }
 
+    /// 供封面下载复用：按候选来源取专辑图 URL。QQ 直接由 albumMid 拼图床地址。
+    func albumPicURL(for candidate: LyricCandidate, completion: @escaping (URL?) -> Void) {
+        switch candidate.provider {
+        case .netEase:
+            guard let cookie = readCookie(provider: .netEase),
+                  let songID = Int(candidate.identifier) else {
+                completion(nil)
+                return
+            }
+            netEaseClient.albumPicURL(songID: songID, cookie: cookie, completion: completion)
+        case .qqMusic:
+            guard let albumMid = candidate.albumMid, !albumMid.isEmpty else {
+                completion(nil)
+                return
+            }
+            completion(URL(string: "https://y.qq.com/music/photo_new/T002R500x500M000\(albumMid).jpg"))
+        }
+    }
+
     private func readCookie(provider: LyricProvider) -> String? {
         guard let cookie = try? CookieStore.read(provider: provider),
               !cookie.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -334,7 +353,8 @@ final class LyricSearchService {
             identifier: candidate.songMid,
             name: candidate.name,
             artists: candidate.artists,
-            album: candidate.album
+            album: candidate.album,
+            albumMid: candidate.albumMid
         )
         return ScoredLyricCandidate(candidate: lyricCandidate, score: score(lyricCandidate, for: query))
     }
@@ -424,6 +444,7 @@ struct LyricCandidate {
     let name: String
     let artists: [String]
     let album: String?
+    var albumMid: String?
 }
 
 struct ScoredLyricCandidate {

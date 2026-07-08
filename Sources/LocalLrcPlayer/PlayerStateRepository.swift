@@ -6,6 +6,7 @@ struct PlayerState {
     let lastTrackId: Int64?
     let lastPosition: TimeInterval
     let playbackMode: PlaybackMode
+    let volume: Double
 }
 
 struct SavedWindowFrame: Equatable {
@@ -36,7 +37,7 @@ final class PlayerStateRepository {
     func playbackState() throws -> PlayerState {
         try database.read { db in
             let sql = """
-            SELECT last_track_id, last_position, playback_mode
+            SELECT last_track_id, last_position, playback_mode, volume
             FROM player_state
             WHERE id = 1
             LIMIT 1;
@@ -44,7 +45,7 @@ final class PlayerStateRepository {
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
             guard sqlite3_step(statement) == SQLITE_ROW else {
-                return PlayerState(lastTrackId: nil, lastPosition: 0, playbackMode: .sequential)
+                return PlayerState(lastTrackId: nil, lastPosition: 0, playbackMode: .sequential, volume: 1)
             }
             let lastTrackId = sqlite3_column_type(statement, 0) == SQLITE_NULL
                 ? nil
@@ -52,10 +53,14 @@ final class PlayerStateRepository {
             let modeRaw = sqlite3_column_type(statement, 2) == SQLITE_NULL
                 ? PlaybackMode.sequential.rawValue
                 : String(cString: sqlite3_column_text(statement, 2))
+            let volume = sqlite3_column_type(statement, 3) == SQLITE_NULL
+                ? 1
+                : sqlite3_column_double(statement, 3)
             return PlayerState(
                 lastTrackId: lastTrackId,
                 lastPosition: sqlite3_column_double(statement, 1),
-                playbackMode: PlaybackMode(rawValue: modeRaw) ?? .sequential
+                playbackMode: PlaybackMode(rawValue: modeRaw) ?? .sequential,
+                volume: min(max(volume, 0), 1)
             )
         }
     }
@@ -118,6 +123,22 @@ final class PlayerStateRepository {
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, mode.rawValue, -1, Self.sqliteTransient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
+    func updateVolume(_ volume: Double) throws {
+        try database.write { db in
+            let sql = """
+            UPDATE player_state
+            SET volume = ?
+            WHERE id = 1;
+            """
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_double(statement, 1, min(max(volume, 0), 1))
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 throw AppDatabaseError.stepFailed(database.errorMessage(db))
             }

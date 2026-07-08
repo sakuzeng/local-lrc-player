@@ -14,6 +14,7 @@ extension PlayerWindowController {
         trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
         layout.tableView.reloadData()
         restoredPlaybackPosition = max(position, 0)
+        updateNowPlayingInfo(for: track)
         loadLyrics(for: track, highlightAt: restoredPlaybackPosition)
         syncPlaybackPreview(at: position, updateLyrics: false)
 
@@ -50,6 +51,7 @@ extension PlayerWindowController {
         }
 
         playbackController.play(url: playbackURL)
+        updateNowPlayingInfo(for: track)
 
         let highlightAt = resumePosition ?? restoredPlaybackPosition ?? currentSliderPreviewTime()
         loadLyrics(for: track, highlightAt: highlightAt > 0 ? highlightAt : nil)
@@ -89,6 +91,56 @@ extension PlayerWindowController {
             }
         } else if highlightAt > 0 {
             syncPlaybackPreview(at: highlightAt)
+        }
+    }
+
+    /// 播放区信息块：内嵌封面 → 本地缓存/下载兜底 → 占位音符。
+    func updateNowPlayingInfo(for track: MusicTrack) {
+        let title = track.title?.isEmpty == false
+            ? track.title!
+            : track.audioURL.deletingPathExtension().lastPathComponent
+        let artist = track.artist
+        let audioURL = track.audioURL
+        nowPlayingArtworkTrackURL = audioURL
+        layout.updateNowPlaying(title: title, artist: artist, artwork: nil)
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let embedded = TrackMetadataReader.artworkData(from: audioURL).flatMap(NSImage.init(data:))
+            DispatchQueue.main.async {
+                guard let self, self.nowPlayingArtworkTrackURL == audioURL else {
+                    return
+                }
+                if let embedded {
+                    self.layout.updateNowPlaying(title: title, artist: artist, artwork: embedded)
+                } else {
+                    self.loadDownloadedArtwork(for: track, title: title, artist: artist)
+                }
+            }
+        }
+    }
+
+    /// 缓存命中直接用；否则每曲目每次运行只自动下载一次，静默失败保持占位。
+    func loadDownloadedArtwork(for track: MusicTrack, title: String, artist: String?) {
+        guard let trackId = track.id else {
+            return
+        }
+        let audioURL = track.audioURL
+
+        if let cached = ArtworkCache.load(trackId: trackId) {
+            layout.updateNowPlaying(title: title, artist: artist, artwork: cached)
+            return
+        }
+
+        guard !artworkDownloadAttemptedTrackIds.contains(trackId) else {
+            return
+        }
+        artworkDownloadAttemptedTrackIds.insert(trackId)
+
+        artworkDownloadService.fetchArtwork(for: track) { [weak self] image in
+            guard let self, let image, self.nowPlayingArtworkTrackURL == audioURL else {
+                return
+            }
+            self.layout.updateNowPlaying(title: title, artist: artist, artwork: image)
         }
     }
 
@@ -402,6 +454,38 @@ extension PlayerWindowController {
                 layout.setPlayButtonShowsPause(true)
             }
         }
+    }
+
+    /// 点击歌词行跳到该行时间：已加载就 seek，未加载则记为恢复位置供下次播放。
+    func seekToLyricLine(at time: TimeInterval) {
+        guard currentTrackIndex != nil,
+              let duration = resolvedPlaybackDuration(),
+              duration > 0 else {
+            return
+        }
+
+        let target = min(max(time, 0), duration)
+        applyPlaybackDisplayTime(target, duration: duration, forceScroll: true)
+        saveCurrentPlaybackState(position: target)
+
+        if playbackController.hasLoadedItem {
+            playbackController.seek(to: target) { [weak self] _ in
+                self?.syncUIWithPlayback()
+            }
+        } else {
+            restoredPlaybackPosition = target
+        }
+    }
+
+    /// 进度条悬停/拖动时间气泡；无时长（未选曲）时不显示。
+    func updateSeekPreview(fraction: Double?) {
+        guard let fraction,
+              let duration = resolvedPlaybackDuration(),
+              duration > 0 else {
+            layout.hideSeekPreview()
+            return
+        }
+        layout.showSeekPreview(text: formatTime(duration * fraction), fraction: fraction)
     }
 
     func syncUIWithPlayback() {

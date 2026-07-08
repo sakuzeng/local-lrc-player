@@ -9,6 +9,7 @@ final class PlayerWindowController: NSWindowController {
     let trackRepository = TrackRepository()
     let playHistoryRepository = PlayHistoryRepository()
     let playerStateRepository = PlayerStateRepository()
+    lazy var artworkDownloadService = ArtworkDownloadService(lyricSearchService: lyricSearchService)
     var menuBarLyricsController: MenuBarLyricsController?
     weak var settingsWindowController: SettingsWindowController?
     var lyricCandidateDialog: LyricCandidateDialog?
@@ -28,11 +29,14 @@ final class PlayerWindowController: NSWindowController {
     var isApplyingProgrammaticSliderUpdate = false
     var playbackMode: PlaybackMode = .sequential
     var shuffleHistory: [Int] = []
+    var nowPlayingArtworkTrackURL: URL?
+    var artworkDownloadAttemptedTrackIds: Set<Int64> = []
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
     private var windowToolbar: PlayerWindowToolbar?
     private var windowFrameSaveTimer: Timer?
+    private var volumeSaveTimer: Timer?
 
     var selectedLyricProvider: LyricProvider {
         settingsWindowController?.selectedLyricProvider ?? .netEase
@@ -55,6 +59,7 @@ final class PlayerWindowController: NSWindowController {
     deinit {
         progressTimer?.invalidate()
         windowFrameSaveTimer?.invalidate()
+        volumeSaveTimer?.invalidate()
         if let mouseDownMonitor {
             NSEvent.removeMonitor(mouseDownMonitor)
         }
@@ -181,11 +186,19 @@ final class PlayerWindowController: NSWindowController {
         layout.progressSlider.target = self
         layout.progressSlider.action = #selector(progressChanged)
         layout.progressSlider.isContinuous = true
+        layout.volumeSlider.target = self
+        layout.volumeSlider.action = #selector(volumeChanged)
+        layout.volumeSlider.isContinuous = true
+        layout.volumeButton.target = self
+        layout.volumeButton.action = #selector(toggleVolumePopover)
         layout.progressSlider.onTrackingBegan = { [weak self] in
             self?.beginProgressTracking()
         }
         layout.progressSlider.onTrackingEnded = { [weak self] in
             self?.commitProgressSeek(resumeAfterSeek: self?.wasPlayingBeforeSliderTracking == true)
+        }
+        layout.progressSlider.onHoverFraction = { [weak self] fraction in
+            self?.updateSeekPreview(fraction: fraction)
         }
 
         trackListDataSource.configure(tableView: layout.tableView)
@@ -200,6 +213,9 @@ final class PlayerWindowController: NSWindowController {
 
         layout.lyricsView.onMouseDown = { [weak self] in
             self?.resignSearchFieldFocus()
+        }
+        layout.lyricsView.onLineClicked = { [weak self] time in
+            self?.seekToLyricLine(at: time)
         }
 
         installSearchFieldFocusMonitor()
@@ -451,8 +467,30 @@ final class PlayerWindowController: NSWindowController {
     private func restorePlaybackMode() {
         if let state = try? playerStateRepository.playbackState() {
             playbackMode = state.playbackMode
+            layout.volumeSlider.doubleValue = state.volume
+            playbackController.volume = Float(state.volume)
         }
         applyPlaybackMode()
+    }
+
+    @objc private func toggleVolumePopover() {
+        layout.toggleVolumePopover()
+    }
+
+    @objc private func volumeChanged() {
+        playbackController.volume = Float(layout.volumeSlider.doubleValue)
+        scheduleVolumeSave()
+    }
+
+    /// 拖动音量时防抖落库，避免每个 tick 都写 SQLite。
+    private func scheduleVolumeSave() {
+        volumeSaveTimer?.invalidate()
+        volumeSaveTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            try? playerStateRepository.updateVolume(layout.volumeSlider.doubleValue)
+        }
     }
 
     private func applyPlaybackMode() {

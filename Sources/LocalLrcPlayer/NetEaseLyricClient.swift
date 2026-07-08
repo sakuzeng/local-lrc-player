@@ -106,6 +106,27 @@ final class NetEaseLyricClient {
         }.resume()
     }
 
+    /// 专辑封面 URL 走 song/detail 接口（搜索接口的 album 不稳定携带 picUrl）。
+    func albumPicURL(songID: Int, cookie: String, completion: @escaping (URL?) -> Void) {
+        var components = URLComponents(string: "https://music.163.com/api/song/detail")!
+        components.queryItems = [
+            URLQueryItem(name: "id", value: String(songID)),
+            URLQueryItem(name: "ids", value: "[\(songID)]")
+        ]
+
+        var request = URLRequest(url: components.url!)
+        request.timeoutInterval = 12
+        applyCommonHeaders(to: &request, cookie: cookie)
+
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            let picURL = data
+                .flatMap { try? JSONDecoder().decode(NetEaseSongDetailResponse.self, from: $0) }
+                .flatMap { $0.songs?.first?.album?.picUrl }
+                .flatMap(URL.init(string:))
+            DispatchQueue.main.async { completion(picURL) }
+        }.resume()
+    }
+
     private func applyCommonHeaders(to request: inout URLRequest, cookie: String) {
         request.setValue("https://music.163.com/", forHTTPHeaderField: "Referer")
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X) LocalLrcPlayer", forHTTPHeaderField: "User-Agent")
@@ -155,6 +176,18 @@ private struct NetEaseArtist: Decodable {
 
 private struct NetEaseAlbum: Decodable {
     let name: String
+}
+
+private struct NetEaseSongDetailResponse: Decodable {
+    let songs: [NetEaseDetailSong]?
+}
+
+private struct NetEaseDetailSong: Decodable {
+    let album: NetEaseDetailAlbum?
+}
+
+private struct NetEaseDetailAlbum: Decodable {
+    let picUrl: String?
 }
 
 private struct NetEaseLyricResponse: Decodable {
