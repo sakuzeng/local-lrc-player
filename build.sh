@@ -13,6 +13,8 @@ BIN_PATH="$MACOS_DIR/$APP_NAME"
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
+cp "$ROOT_DIR/assets/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+
 SWIFT_FILES=()
 while IFS= read -r file; do
   SWIFT_FILES+=("$file")
@@ -37,6 +39,8 @@ cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
   <string>zh_CN</string>
   <key>CFBundleExecutable</key>
   <string>LocalLrcPlayer</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>local.lrc.player.v2</string>
   <key>CFBundleInfoDictionaryVersion</key>
