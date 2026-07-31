@@ -61,6 +61,7 @@ final class MasterPlaylistRepositoryTests {
         try runIsolated { try self.testRemovingLibraryKeepsSharedTrack() }
         try runIsolated { try self.testRemovingLibraryClearsPlayerState() }
         try runIsolated { try self.testSyncReordersMasterPlaylistByFileName() }
+        try runIsolated { try self.testRenamingFileKeepsSameTrackAndRepointsPath() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -226,6 +227,43 @@ final class MasterPlaylistRepositoryTests {
             namesAfterSecondSync,
             ["a-first.mp3", "m-middle.mp3", "z-last.mp3"],
             "refresh should reorder newly added tracks"
+        )
+    }
+
+    /// 在 Finder 里改名 + 刷新：内容哈希去重必须把它认成同一首（track id 不变、路径重指、
+    /// 不产生重复行），窗口层才有可能靠 track id 把播放行认回来。
+    private func testRenamingFileKeepsSameTrackAndRepointsPath() throws {
+        let library = tempRoot.appendingPathComponent("Rename", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+
+        try Data("a-song".utf8).write(to: library.appendingPathComponent("a-first.mp3"))
+        try Data("m-song".utf8).write(to: library.appendingPathComponent("m-middle.mp3"))
+
+        let registered = try libraryRepository.registerLibrary(at: library)
+        _ = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+
+        let before = try trackRepository.masterPlaylistTracks()
+        try assertEqual(before.map(\.fileName), ["a-first.mp3", "m-middle.mp3"])
+        let renamedTrackId = before[0].id
+
+        try FileManager.default.moveItem(
+            at: library.appendingPathComponent("a-first.mp3"),
+            to: library.appendingPathComponent("z-renamed.mp3")
+        )
+        let summary = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+        try assertEqual(summary.total, 2, "rename must not create a second row")
+
+        let after = try trackRepository.masterPlaylistTracks()
+        try assertEqual(after.map(\.fileName), ["m-middle.mp3", "z-renamed.mp3"], "rename reorders the list")
+        try assertEqual(after[1].id, renamedTrackId, "renamed file must keep its track id")
+        try assertEqual(
+            after[1].filePath,
+            library.appendingPathComponent("z-renamed.mp3").standardizedFileURL.path,
+            "canonical path should follow the rename"
+        )
+        try assertTrue(
+            try trackRepository.track(forFilePath: library.appendingPathComponent("a-first.mp3").path) == nil,
+            "old path should no longer resolve"
         )
     }
 }

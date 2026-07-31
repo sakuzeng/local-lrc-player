@@ -24,6 +24,8 @@ final class PlayerWindowController: NSWindowController {
     var seekGeneration = 0
     var searchKeyword = ""
     var playingTrackURL: URL?
+    /// 正在播放曲目的数据库 id。文件在 Finder 里被改名后路径会失配，靠它把播放行重新认回来。
+    var playingTrackId: Int64?
     var restoredPlaybackPosition: TimeInterval?
     var lastSavedPlaybackTick = 0
     var isApplyingProgrammaticSliderUpdate = false

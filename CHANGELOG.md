@@ -2,6 +2,25 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-07-31
+
+本日:修复播放中在 Finder 改文件名后刷新导致播放行错位/播放状态写错曲目/进度条越界崩溃。
+
+### Fixed
+
+- 播放中在 Finder 里给歌曲改名，再点刷新后一系列错乱（列表没有任何行高亮成播放行、
+  菜单栏歌词显示成别的歌、`player_state` 被写成别的歌的 id、拖动进度条可能崩溃）。
+  根因是窗口层只用文件路径（`playingTrackURL`）认「正在播放」，改名后路径失配，
+  `currentTrackIndex` 原样留着变成悬空索引，指向重排后列表里的另一首歌；
+  列表因搜索过滤或同时删文件而变短时，这个索引还会越界。
+  数据层本身没问题：SHA256 内容哈希去重会把改名后的文件认成同一首，
+  track id 不变、`tracks.file_path` 与 `library_tracks` 重指新路径，
+  只有 `playlist_tracks.sort_order` 按新文件名重排（所以列表位置会变）。
+  修法是新增 `playingTrackId`，刷新后按路径找不到就按 track id 把播放行认回来并纠正路径，
+  彻底认不回来才清空 `currentTrackIndex`（不再留悬空值）；
+  播放状态落库改为以 `playingTrackId` 为准，不再从索引取 id；
+  `completeSliderSeek` 补上越界检查。数据库测试新增改名后 track id 稳定/路径重指的断言。
+
 ## 2026-07-08
 
 本日:设计并接入正式 App 图标;播放区信息补全(封面/歌名/歌手 + 封面下载缓存);音量控制(schema v4);歌词点击 seek 与排版升级;ROADMAP 登记界面美化第二阶段与音乐文件元数据写入计划。

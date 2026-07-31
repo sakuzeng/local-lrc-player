@@ -9,6 +9,7 @@ extension PlayerWindowController {
         playbackController.stop()
         let track = tracks[index]
         playingTrackURL = track.audioURL
+        playingTrackId = track.id
         currentTrackIndex = index
         trackListDataSource.playingTrackURL = playingTrackURL
         trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
@@ -35,6 +36,7 @@ extension PlayerWindowController {
 
         let track = tracks[index]
         playingTrackURL = track.audioURL
+        playingTrackId = track.id
         currentTrackIndex = index
         trackListDataSource.playingTrackURL = playingTrackURL
         trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
@@ -449,10 +451,10 @@ extension PlayerWindowController {
         wasPlayingBeforeSliderTracking = false
         if resumeAfterSeek {
             playbackController.resume()
-            if let index = currentTrackIndex {
+            if let index = currentTrackIndex, tracks.indices.contains(index) {
                 layout.statusLabel.stringValue = "正在播放：\(tracks[index].displayName)"
-                layout.setPlayButtonShowsPause(true)
             }
+            layout.setPlayButtonShowsPause(true)
         }
     }
 
@@ -565,8 +567,10 @@ extension PlayerWindowController {
         applyPlaybackDisplayTime(previewTime, duration: duration, forceScroll: forceScroll)
     }
 
+    /// 以 playingTrackId 为准，不看 currentTrackIndex ——
+    /// 列表被搜索过滤或文件改名重排后，索引指向的可能已经是另一首歌。
     func saveCurrentPlaybackState(position: TimeInterval? = nil) {
-        guard let index = currentTrackIndex, tracks.indices.contains(index), let trackId = tracks[index].id else {
+        guard let trackId = playingTrackId else {
             return
         }
         let currentPosition = position ?? playbackController.currentTime() ?? 0

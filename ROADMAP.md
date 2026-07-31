@@ -5,10 +5,16 @@
 ## Known Bugs
 
 - 暂无已确认但未修复的问题。后续发现 bug 时先记录在这里，修复后移到 `CHANGELOG.md` 的 `Fixed`。
+- 樱花草等歌曲，正常播放歌词对得上，但是手动移动进度条就不行了（对不上了）
+- 随机播放的历史（`shuffleHistory`）记的是列表下标，刷新导致列表重排后「上一首」会回到错的歌；
+  影响仅限随机模式下的上一首，不会崩溃。
 
 ## High Priority
 
 界面美化（播放区视觉重心、封面等待 Medium 项）——以下 High Priority UI 项已于 2026-06-23 阶段性完成：
+
+- 参考一下这个的音乐播放器的布局/Users/sakuzeng/improve/coding/mac_app/local-lrc-player/assets/refs/photo_2026-07-27_23-46-39.jpg
+- 还有这里悬浮到歌词这之后会弹出这个/Users/sakuzeng/improve/coding/mac_app/local-lrc-player/assets/refs/photo_2026-07-27_23-49-05.jpg（我现在是双显示屏幕，菜单栏能做那个能弹出这种配置吗，好做吗）
 
 - ~~顶部工具栏精简~~：`NSToolbar` 收纳选择文件夹/刷新/搜索。
 - ~~设置窗口~~：⌘, 打开；音乐库/Cookie/歌词/菜单栏歌词；支持移除文件夹。

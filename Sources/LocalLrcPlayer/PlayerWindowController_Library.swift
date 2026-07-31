@@ -51,6 +51,8 @@ extension PlayerWindowController {
                 layout.statusLabel.stringValue = "总播放列表为空（所选目录没有支持的音乐文件）"
                 layout.lyricsView.showPlaceholder("未找到音乐文件")
                 currentTrackIndex = nil
+                playingTrackURL = nil
+                playingTrackId = nil
                 playbackController.stop()
                 lrcLines = []
             } else {
@@ -100,6 +102,9 @@ extension PlayerWindowController {
         }
     }
 
+    /// 刷新/搜索后把播放行重新对上号：先按路径找，路径失配（例如在 Finder 里改了文件名）再按
+    /// track id 找回来并把路径纠正到新名字。都找不到就清空 currentTrackIndex ——
+    /// 留着旧索引会指到列表里的另一首歌，甚至在列表变短时越界崩溃。
     func updatePlayingTrackInList(preferredURL: URL?, scrollToVisible: Bool) {
         if let preferredURL,
            let index = tracks.firstIndex(where: { TrackListDataSource.matchesTrackURL($0.audioURL, preferredURL) }) {
@@ -108,6 +113,12 @@ extension PlayerWindowController {
         } else if let playingTrackURL,
                   let index = tracks.firstIndex(where: { TrackListDataSource.matchesTrackURL($0.audioURL, playingTrackURL) }) {
             currentTrackIndex = index
+        } else if let playingTrackId,
+                  let index = tracks.firstIndex(where: { $0.id == playingTrackId }) {
+            playingTrackURL = tracks[index].audioURL
+            currentTrackIndex = index
+        } else {
+            currentTrackIndex = nil
         }
 
         trackListDataSource.playingTrackURL = playingTrackURL
@@ -184,18 +195,19 @@ extension PlayerWindowController {
                 trackListDataSource.tracks = []
                 currentTrackIndex = nil
                 playingTrackURL = nil
+                playingTrackId = nil
                 playbackController.stop()
                 lrcLines = []
                 layout.lyricsView.showPlaceholder("请添加音乐文件夹")
                 layout.statusLabel.stringValue = "请添加音乐文件夹（⌘, 打开设置）"
             } else {
-                let preserveURL = playingTrackURL
-                reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: preserveURL)
-                if let preserveURL,
-                   !tracks.contains(where: { TrackListDataSource.matchesTrackURL($0.audioURL, preserveURL) }) {
+                let hadPlayingTrack = playingTrackURL != nil
+                reloadMasterPlaylist(restoreLastSession: false, preserveTrackURL: playingTrackURL)
+                // reloadMasterPlaylist 已按路径/id 重新认过播放行；仍认不回来才算这首歌真的没了。
+                if hadPlayingTrack, currentTrackIndex == nil {
                     playbackController.stop()
                     playingTrackURL = nil
-                    currentTrackIndex = nil
+                    playingTrackId = nil
                     lrcLines = []
                     layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
                 }
