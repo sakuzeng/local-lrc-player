@@ -14,6 +14,7 @@ final class PlayerWindowLayout {
     let nextButton = NSButton(title: "", target: nil, action: nil)
     let playbackModeButton = NSButton(title: "", target: nil, action: nil)
     let locatePlayingButton = NSButton(title: "", target: nil, action: nil)
+    let immersiveEnterButton = NSButton(title: "", target: nil, action: nil)
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
     let volumeSlider = NSSlider(value: 1, minValue: 0, maxValue: 1, target: nil, action: nil)
@@ -38,6 +39,30 @@ final class PlayerWindowLayout {
     private let tableScrollView = NSScrollView()
     private let transportBar = NSView()
     private let progressBar = NSView()
+
+    // 沉浸模式：与 splitView 平级、互斥显隐的独立容器。
+    // lyricsView / transportRow / progressRow 在两套容器间搬家（不造第二套控件，
+    // 主窗口那套被 bindActions 绑死且散布在控制器各处，镜像同步必然出状态漂移）。
+    let immersiveExitButton = NSButton(title: "", target: nil, action: nil)
+    private let splitView = NSSplitView()
+    private let immersiveContainer = NSView()
+    private let immersiveContentArea = NSView()
+    private let immersiveCoverView = NSImageView()
+    private let immersiveTitleLabel = NSTextField(labelWithString: "")
+    private let immersiveArtistLabel = NSTextField(labelWithString: "")
+    // 只作定位容器，不画背景：控制区直接浮在氛围背景上（参考图的做法）。
+    // 想要回毛玻璃底就把它换成 NSVisualEffectView（.popover + .withinWindow + 圆角）。
+    private let immersiveControlBar = NSView()
+    // transportRow 内部这两块底色在日常模式下贴着窗口背景看是对的，
+    // 但叠在沉浸模式的毛玻璃控制条上会变成双层灰块，切换时按模式开关。
+    private var transportClusterBackground: NSView!
+    private var transportModePill: NSView!
+    private var transportRow: NSStackView!
+    private var progressRow: NSStackView!
+    private var listModeConstraints: [NSLayoutConstraint] = []
+    private var immersiveModeConstraints: [NSLayoutConstraint] = []
+    private var seekPreviewHost: NSView!
+    private(set) var isImmersive = false
 
     init(contentView: NSView) {
         setup(in: contentView)
@@ -119,8 +144,8 @@ final class PlayerWindowLayout {
         setupTrackTable()
         configureListContainer()
         configureLyricsContainer()
+        configureImmersiveContainer()
 
-        let splitView = NSSplitView()
         splitView.isVertical = true
         splitView.dividerStyle = .thin
         splitView.addArrangedSubview(listContainer)
@@ -129,7 +154,7 @@ final class PlayerWindowLayout {
         listContainer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240).isActive = true
         listContainer.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
 
-        let root = NSStackView(views: [splitView, statusLabel])
+        let root = NSStackView(views: [splitView, immersiveContainer, statusLabel])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 12
@@ -154,8 +179,148 @@ final class PlayerWindowLayout {
 
             splitView.widthAnchor.constraint(equalTo: root.widthAnchor),
             splitView.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),
+            immersiveContainer.widthAnchor.constraint(equalTo: root.widthAnchor),
+            immersiveContainer.heightAnchor.constraint(greaterThanOrEqualToConstant: 360),
             statusLabel.widthAnchor.constraint(equalTo: root.widthAnchor)
         ])
+
+        NSLayoutConstraint.activate(listModeConstraints)
+    }
+
+    /// 沉浸模式容器：左侧大封面、右侧歌名/歌手 + 歌词、底部一整条悬浮控制条。
+    /// 约束全部落在容器内部，不与 splitView 列宽发生关系（见 doc/ui.md 的列宽约束告诫）。
+    private func configureImmersiveContainer() {
+        immersiveContainer.translatesAutoresizingMaskIntoConstraints = false
+        immersiveContainer.isHidden = true
+
+        immersiveCoverView.wantsLayer = true
+        immersiveCoverView.layer?.cornerRadius = 14
+        immersiveCoverView.layer?.cornerCurve = .continuous
+        immersiveCoverView.layer?.masksToBounds = true
+        immersiveCoverView.layer?.backgroundColor = NSColor.quaternarySystemFill.cgColor
+        immersiveCoverView.imageScaling = .scaleProportionallyUpOrDown
+        immersiveCoverView.translatesAutoresizingMaskIntoConstraints = false
+
+        immersiveTitleLabel.font = .systemFont(ofSize: 27, weight: .bold)
+        immersiveTitleLabel.lineBreakMode = .byTruncatingTail
+        immersiveArtistLabel.font = .systemFont(ofSize: 15)
+        immersiveArtistLabel.textColor = .secondaryLabelColor
+        immersiveArtistLabel.lineBreakMode = .byTruncatingTail
+        for label in [immersiveTitleLabel, immersiveArtistLabel] {
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+
+        immersiveExitButton.image = Self.symbolImage("arrow.down.right.and.arrow.up.left", pointSize: 13, weight: .medium)
+        immersiveExitButton.imagePosition = .imageOnly
+        immersiveExitButton.isBordered = false
+        immersiveExitButton.bezelStyle = .regularSquare
+        immersiveExitButton.contentTintColor = .secondaryLabelColor
+        immersiveExitButton.toolTip = "退出沉浸模式（Esc）"
+        immersiveExitButton.translatesAutoresizingMaskIntoConstraints = false
+
+        immersiveControlBar.translatesAutoresizingMaskIntoConstraints = false
+
+        immersiveContentArea.translatesAutoresizingMaskIntoConstraints = false
+
+        immersiveContainer.addSubview(immersiveContentArea)
+        immersiveContainer.addSubview(immersiveControlBar)
+        immersiveContainer.addSubview(immersiveExitButton)
+        immersiveContentArea.addSubview(immersiveCoverView)
+        immersiveContentArea.addSubview(immersiveTitleLabel)
+        immersiveContentArea.addSubview(immersiveArtistLabel)
+
+        // 封面按内容区宽度取比例，但同时受高度与上限压制，窄窗/矮窗都不会顶穿控制条。
+        let coverProportional = immersiveCoverView.widthAnchor.constraint(
+            equalTo: immersiveContentArea.widthAnchor,
+            multiplier: 0.40
+        )
+        coverProportional.priority = .defaultHigh
+
+        NSLayoutConstraint.activate([
+            immersiveContentArea.leadingAnchor.constraint(equalTo: immersiveContainer.leadingAnchor, constant: 40),
+            immersiveContentArea.trailingAnchor.constraint(equalTo: immersiveContainer.trailingAnchor, constant: -40),
+            immersiveContentArea.topAnchor.constraint(equalTo: immersiveContainer.topAnchor, constant: 24),
+            immersiveContentArea.bottomAnchor.constraint(equalTo: immersiveControlBar.topAnchor, constant: -18),
+
+            immersiveCoverView.leadingAnchor.constraint(equalTo: immersiveContentArea.leadingAnchor),
+            immersiveCoverView.centerYAnchor.constraint(equalTo: immersiveContentArea.centerYAnchor),
+            immersiveCoverView.heightAnchor.constraint(equalTo: immersiveCoverView.widthAnchor),
+            immersiveCoverView.heightAnchor.constraint(lessThanOrEqualTo: immersiveContentArea.heightAnchor),
+            immersiveCoverView.widthAnchor.constraint(lessThanOrEqualToConstant: 460),
+            coverProportional,
+
+            immersiveTitleLabel.leadingAnchor.constraint(equalTo: immersiveCoverView.trailingAnchor, constant: 36),
+            immersiveTitleLabel.trailingAnchor.constraint(equalTo: immersiveContentArea.trailingAnchor),
+            immersiveTitleLabel.topAnchor.constraint(equalTo: immersiveContentArea.topAnchor, constant: 8),
+
+            immersiveArtistLabel.leadingAnchor.constraint(equalTo: immersiveTitleLabel.leadingAnchor),
+            immersiveArtistLabel.trailingAnchor.constraint(equalTo: immersiveTitleLabel.trailingAnchor),
+            immersiveArtistLabel.topAnchor.constraint(equalTo: immersiveTitleLabel.bottomAnchor, constant: 4),
+
+            immersiveControlBar.leadingAnchor.constraint(equalTo: immersiveContainer.leadingAnchor, constant: 40),
+            immersiveControlBar.trailingAnchor.constraint(equalTo: immersiveContainer.trailingAnchor, constant: -40),
+            immersiveControlBar.bottomAnchor.constraint(equalTo: immersiveContainer.bottomAnchor, constant: -14),
+            immersiveControlBar.heightAnchor.constraint(equalToConstant: 56),
+
+            immersiveExitButton.trailingAnchor.constraint(equalTo: immersiveContainer.trailingAnchor, constant: -8),
+            immersiveExitButton.topAnchor.constraint(equalTo: immersiveContainer.topAnchor),
+            immersiveExitButton.widthAnchor.constraint(equalToConstant: 24),
+            immersiveExitButton.heightAnchor.constraint(equalToConstant: 24)
+        ])
+
+        // 沉浸组：搬家后才 activate。
+        immersiveModeConstraints = [
+            lyricsView.leadingAnchor.constraint(equalTo: immersiveTitleLabel.leadingAnchor, constant: -8),
+            lyricsView.trailingAnchor.constraint(equalTo: immersiveContentArea.trailingAnchor),
+            lyricsView.topAnchor.constraint(equalTo: immersiveArtistLabel.bottomAnchor, constant: 14),
+            lyricsView.bottomAnchor.constraint(equalTo: immersiveContentArea.bottomAnchor),
+
+            // 无背景容器时按内容对齐：传输键左缘对齐封面左缘，进度条右缘对齐歌词右缘。
+            transportRow.leadingAnchor.constraint(equalTo: immersiveControlBar.leadingAnchor),
+            transportRow.centerYAnchor.constraint(equalTo: immersiveControlBar.centerYAnchor),
+
+            progressRow.leadingAnchor.constraint(equalTo: transportRow.trailingAnchor, constant: 28),
+            progressRow.trailingAnchor.constraint(equalTo: immersiveControlBar.trailingAnchor),
+            progressRow.centerYAnchor.constraint(equalTo: immersiveControlBar.centerYAnchor)
+        ]
+    }
+
+    /// 日常 ⇄ 沉浸切换。顺序固定：先卸当前组约束，再搬视图，最后装目标组。
+    func setImmersiveMode(_ enabled: Bool) {
+        guard enabled != isImmersive else {
+            return
+        }
+        isImmersive = enabled
+
+        NSLayoutConstraint.deactivate(enabled ? listModeConstraints : immersiveModeConstraints)
+
+        move(lyricsView, to: enabled ? immersiveContentArea : lyricsContainer)
+        move(transportRow, to: enabled ? immersiveControlBar : transportBar)
+        move(progressRow, to: enabled ? immersiveControlBar : progressBar)
+        // 时间气泡是手动摆 frame 的，宿主换了要跟着走，否则算出来的坐标落在旧父视图里。
+        seekPreviewHost = enabled ? immersiveControlBar : progressBar
+        move(seekPreviewLabel, to: seekPreviewHost)
+        seekPreviewLabel.isHidden = true
+
+        NSLayoutConstraint.activate(enabled ? immersiveModeConstraints : listModeConstraints)
+
+        // 沉浸控制条本身已是一层毛玻璃，内层 pill 底色再叠上去会糊成双层灰块。
+        let pillFill = enabled ? nil : NSColor.quaternarySystemFill.cgColor
+        transportClusterBackground.layer?.backgroundColor = pillFill
+        transportModePill.layer?.backgroundColor = pillFill
+
+        splitView.isHidden = enabled
+        immersiveContainer.isHidden = !enabled
+        lyricsView.applyProfile(enabled ? .immersive : .standard)
+    }
+
+    private func move(_ view: NSView, to parent: NSView) {
+        guard view.superview !== parent else {
+            return
+        }
+        view.removeFromSuperview()
+        parent.addSubview(view)
     }
 
     private func configurePlaybackBars() {
@@ -183,6 +348,7 @@ final class PlayerWindowLayout {
         transportCluster.translatesAutoresizingMaskIntoConstraints = false
 
         let clusterBackground = NSView()
+        transportClusterBackground = clusterBackground
         clusterBackground.wantsLayer = true
         clusterBackground.layer?.cornerRadius = 22
         clusterBackground.layer?.cornerCurve = .continuous
@@ -198,6 +364,7 @@ final class PlayerWindowLayout {
         ])
 
         let modePill = NSView()
+        transportModePill = modePill
         modePill.wantsLayer = true
         modePill.layer?.cornerRadius = 22
         modePill.layer?.cornerCurve = .continuous
@@ -215,7 +382,7 @@ final class PlayerWindowLayout {
             playbackModeButton.heightAnchor.constraint(equalToConstant: 32)
         ])
 
-        let transportRow = NSStackView(views: [clusterBackground, modePill])
+        transportRow = NSStackView(views: [clusterBackground, modePill])
         transportRow.orientation = .horizontal
         transportRow.alignment = .centerY
         transportRow.spacing = 20
@@ -227,7 +394,7 @@ final class PlayerWindowLayout {
         configureNowPlayingInfo()
         configureVolumeControls()
 
-        let progressRow = NSStackView(views: [progressSlider, timeLabel, volumeButton])
+        progressRow = NSStackView(views: [progressSlider, timeLabel, volumeButton])
         progressRow.orientation = .horizontal
         progressRow.alignment = .centerY
         progressRow.spacing = 12
@@ -236,6 +403,7 @@ final class PlayerWindowLayout {
 
         progressBar.translatesAutoresizingMaskIntoConstraints = false
         progressBar.addSubview(progressRow)
+        seekPreviewHost = progressBar
 
         // 进度条悬停时间气泡：frame 手动摆（跟随指针），不进 Auto Layout。
         seekPreviewLabel.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
@@ -250,14 +418,20 @@ final class PlayerWindowLayout {
 
         NSLayoutConstraint.activate([
             transportBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight),
+            progressBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight)
+        ])
+
+        // 两条 row 会在沉浸模式里搬到别的宿主，跨视图约束必须成组管理：
+        // 切换时先 deactivate 当前组、再搬家、最后 activate 目标组。顺序错会崩在
+        // "constraint with anchors of different hierarchies"。
+        listModeConstraints += [
             transportRow.centerXAnchor.constraint(equalTo: transportBar.centerXAnchor),
             transportRow.centerYAnchor.constraint(equalTo: transportBar.centerYAnchor),
 
-            progressBar.heightAnchor.constraint(equalToConstant: Self.playbackBarHeight),
             progressRow.leadingAnchor.constraint(equalTo: progressBar.leadingAnchor, constant: Self.lyricsHorizontalInset),
             progressRow.trailingAnchor.constraint(equalTo: progressBar.trailingAnchor, constant: -Self.lyricsHorizontalInset),
             progressRow.centerYAnchor.constraint(equalTo: progressBar.centerYAnchor)
-        ])
+        ]
     }
 
     private func configureNowPlayingInfo() {
@@ -333,7 +507,7 @@ final class PlayerWindowLayout {
             width: seekPreviewLabel.frame.width + 10,
             height: seekPreviewLabel.frame.height + 2
         )
-        let sliderFrame = progressSlider.convert(progressSlider.bounds, to: progressBar)
+        let sliderFrame = progressSlider.convert(progressSlider.bounds, to: seekPreviewHost)
         let knobSize: CGFloat = 14
         let knobX = sliderFrame.minX + knobSize / 2 + (sliderFrame.width - knobSize) * CGFloat(fraction)
         let x = min(
@@ -364,6 +538,8 @@ final class PlayerWindowLayout {
     /// 歌词顶栏信息块：无标题时整栏折叠；封面为空时显示占位音符。
     /// 封面同时驱动氛围背景：有图取主色淡入，无图淡出回纯毛玻璃。
     func updateNowPlaying(title: String?, artist: String?, artwork: NSImage?) {
+        updateImmersiveNowPlaying(title: title, artist: artist, artwork: artwork)
+
         guard let title, !title.isEmpty else {
             nowPlayingInfoStack.isHidden = true
             nowPlayingBar.isHidden = true
@@ -391,6 +567,37 @@ final class PlayerWindowLayout {
         ambientBackgroundView.apply(artwork: artwork)
     }
 
+    /// 沉浸模式的大封面与大字标题：与顶栏共用同一条封面来源链，不另外取图。
+    private func updateImmersiveNowPlaying(title: String?, artist: String?, artwork: NSImage?) {
+        guard let title, !title.isEmpty else {
+            immersiveTitleLabel.stringValue = "未在播放"
+            immersiveArtistLabel.stringValue = ""
+            immersiveArtistLabel.isHidden = true
+            immersiveCoverView.imageScaling = .scaleNone
+            immersiveCoverView.image = UIChrome.symbolImage("music.note", pointSize: 64, weight: .light)
+            return
+        }
+
+        // ID3 常缺歌手，标题多是「歌手 - 歌名」；拆开显示，与曲目列表、菜单栏卡片一致。
+        let rawArtist = artist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if rawArtist.isEmpty, let parsed = MusicTrack.parseArtistTitle(title) {
+            immersiveTitleLabel.stringValue = parsed.title
+            immersiveArtistLabel.stringValue = parsed.artist
+        } else {
+            immersiveTitleLabel.stringValue = title
+            immersiveArtistLabel.stringValue = rawArtist
+        }
+        immersiveArtistLabel.isHidden = immersiveArtistLabel.stringValue.isEmpty
+
+        if let artwork {
+            immersiveCoverView.imageScaling = .scaleProportionallyUpOrDown
+            immersiveCoverView.image = artwork
+        } else {
+            immersiveCoverView.imageScaling = .scaleNone
+            immersiveCoverView.image = UIChrome.symbolImage("music.note", pointSize: 64, weight: .light)
+        }
+    }
+
     private func configureListContainer() {
         listContainer.translatesAutoresizingMaskIntoConstraints = false
         tableScrollView.documentView = tableView
@@ -406,6 +613,7 @@ final class PlayerWindowLayout {
         listNavigationStack.alignment = .centerY
         listNavigationStack.spacing = 4
         listNavigationStack.addArrangedSubview(locatePlayingButton)
+        listNavigationStack.addArrangedSubview(immersiveEnterButton)
 
         listHeaderBar.orientation = .horizontal
         listHeaderBar.alignment = .centerY
@@ -473,15 +681,18 @@ final class PlayerWindowLayout {
             nowPlayingInfoStack.trailingAnchor.constraint(lessThanOrEqualTo: nowPlayingBar.trailingAnchor, constant: -Self.lyricsHorizontalInset),
             nowPlayingInfoStack.centerYAnchor.constraint(equalTo: nowPlayingBar.centerYAnchor),
 
-            lyricsView.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
-            lyricsView.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
-            lyricsView.topAnchor.constraint(equalTo: nowPlayingBar.bottomAnchor),
-            lyricsView.bottomAnchor.constraint(equalTo: progressBar.topAnchor),
-
             progressBar.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
             progressBar.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
             progressBar.bottomAnchor.constraint(equalTo: lyricsContainer.bottomAnchor)
         ])
+
+        // lyricsView 同样会搬去沉浸容器，归入 list 组。
+        listModeConstraints += [
+            lyricsView.leadingAnchor.constraint(equalTo: lyricsContainer.leadingAnchor),
+            lyricsView.trailingAnchor.constraint(equalTo: lyricsContainer.trailingAnchor),
+            lyricsView.topAnchor.constraint(equalTo: nowPlayingBar.bottomAnchor),
+            lyricsView.bottomAnchor.constraint(equalTo: progressBar.topAnchor)
+        ]
     }
 
     private func setupTrackTable() {
@@ -542,6 +753,14 @@ final class PlayerWindowLayout {
         locatePlayingButton.contentTintColor = .secondaryLabelColor
         locatePlayingButton.toolTip = "定位正在播放的歌曲"
         locatePlayingButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        immersiveEnterButton.image = Self.symbolImage("arrow.up.left.and.arrow.down.right", pointSize: 13, weight: .semibold)
+        immersiveEnterButton.imagePosition = .imageOnly
+        immersiveEnterButton.isBordered = false
+        immersiveEnterButton.bezelStyle = .regularSquare
+        immersiveEnterButton.contentTintColor = .secondaryLabelColor
+        immersiveEnterButton.toolTip = "沉浸模式（⌘⇧F）"
+        immersiveEnterButton.setContentHuggingPriority(.required, for: .horizontal)
     }
 
     func setPlaybackMode(_ mode: PlaybackMode) {

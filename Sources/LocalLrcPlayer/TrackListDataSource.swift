@@ -379,7 +379,7 @@ private final class TrackTableCellView: NSView {
         }
 
         for source in [id3Title, filenameStem] {
-            guard let source, !source.isEmpty, let parsed = parseArtistTitle(source) else {
+            guard let source, !source.isEmpty, let parsed = MusicTrack.parseArtistTitle(source) else {
                 continue
             }
             return (
@@ -399,24 +399,6 @@ private final class TrackTableCellView: NSView {
             filenameStem,
             subtitleText(artist: nil, album: track.album, hasLyric: track.lyricURL != nil)
         )
-    }
-
-    /// 解析「歌手 - 歌名」格式（文件名或合并后的标题常用此写法）。
-    private static func parseArtistTitle(_ text: String) -> (artist: String, title: String)? {
-        let separators = [" - ", " – ", " — ", "－"]
-        for separator in separators {
-            let parts = text.components(separatedBy: separator)
-            guard parts.count >= 2 else {
-                continue
-            }
-            let artist = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
-            let title = parts.dropFirst().joined(separator: separator)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if !artist.isEmpty, !title.isEmpty {
-                return (artist, title)
-            }
-        }
-        return nil
     }
 
     private static func subtitleText(artist: String?, album: String?, hasLyric: Bool) -> String {

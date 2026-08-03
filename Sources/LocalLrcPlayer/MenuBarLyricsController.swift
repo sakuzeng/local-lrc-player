@@ -106,6 +106,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     private var configureAttempt = 0
     private var visibilityCheckScheduled = false
     private var visibilityRecoveryAttempt = 0
+    private let nowPlayingCard: MenuBarNowPlayingCardController
 
     init(
         playerWindowController: PlayerWindowController,
@@ -113,6 +114,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     ) {
         self.playerWindowController = playerWindowController
         self.settingsRepository = settingsRepository
+        self.nowPlayingCard = MenuBarNowPlayingCardController(playerWindowController: playerWindowController)
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -207,7 +209,17 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        nowPlayingCard.setMenuOpen(true)
         refreshMenuState(in: menu)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        nowPlayingCard.setMenuOpen(false)
+    }
+
+    /// 挂在 PlayerWindowController 的 0.2s 推送链上；卡片没弹出时直接返回，零开销。
+    func refreshNowPlayingCardIfVisible() {
+        nowPlayingCard.refreshIfVisible()
     }
 
     @objc func showMainWindow(_ sender: Any?) {
@@ -391,6 +403,9 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
 
         MenuBarStatusItemVisibility.install(item)
         attachStatusMenu(to: item)
+        if let button = item.button {
+            nowPlayingCard.attach(to: button)
+        }
 
         applyLayout()
         if lastDisplayedText.isEmpty {
@@ -454,6 +469,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
 
     private func disable() {
         stopScrollTimer()
+        nowPlayingCard.detach()
         if let statusItem {
             NSStatusBar.system.removeStatusItem(statusItem)
         }
@@ -583,7 +599,8 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         )
         item.length = width
 
-        button.toolTip = lastDisplayedText.isEmpty ? "Local LRC Player" : lastDisplayedText
+        // 不设 toolTip: 悬停已经弹正在播放卡片, 系统气泡会叠在卡片上方重复同一句歌词。
+        button.toolTip = nil
         button.title = ""
         button.imagePosition = .imageOnly
         button.image = MenuBarLyricsStatusImage.make(

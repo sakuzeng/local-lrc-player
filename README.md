@@ -46,7 +46,9 @@
 - 主窗口 NSToolbar：选择文件夹、刷新、搜索（详见 [doc/ui.md](./doc/ui.md) 工具栏分段说明）。
 - 毛玻璃背景、透明标题栏；列表/歌词空状态 SF Symbol 占位。
 - 氛围背景：窗口底色随当前封面主色晕染（两团柔和色斑，切歌淡入淡出）；无封面时保持纯毛玻璃。
+- 沉浸模式（⌘⇧F）：藏起曲目列表，左侧大封面 + 右侧歌名/歌手与放大左对齐的歌词 + 底部一整行播放控制；Esc、再按 ⌘⇧F 或右上角收起按钮退出。不持久化，启动总是普通模式。
 - 菜单栏歌词：关窗后后台继续显示当前行；宽度为上限（预设 120/140/160 pt 或自定义 80–400 pt），短句随内容收缩；长句播放时滚至末尾停下；点击弹出浅色控制菜单。macOS 26 需在「系统设置 → 菜单栏」允许本应用显示。
+- 菜单栏悬停卡片：鼠标停在菜单栏歌词上 0.3s 弹出正在播放卡片（封面、歌名/歌手、当前歌词、可拖动进度条、上一首/播放暂停/下一首、播放模式、音量），移开自动收起。多显示器下只有当前聚焦那块屏会弹出。
 - 标准 macOS 菜单栏与常用快捷键（⌘Q、空格播放/暂停等）。
 - FLAC 播放优先同名 `.m4a`，否则 `ffmpeg` 转 ALAC 缓存以保证 seek 准确。
 - 本地 SQLite 索引音乐库与曲目（ID3、歌词有无、播放历史等）；总列表按库顺序 + 显示名自然排序（⌘R 刷新后更新）。
@@ -114,6 +116,7 @@ open /Users/sakuzeng/improve/coding/mac_app/local-lrc-player/build/LocalLrcPlaye
 | ⌘M | 最小化 |
 | 空格 | 选中其他歌曲时播放选中项；选中正在播放的同一首时暂停/继续 |
 | ⌘[ / ⌘] | 上一首 / 下一首 |
+| ⌘⇧F | 沉浸模式（Esc 退出） |
 | ⌘⇧? | 帮助 |
 
 ## 本地数据
@@ -235,6 +238,7 @@ Sources/LocalLrcPlayer/
   UIChrome.swift                空状态、Symbol 工具
   MenuBarLyricsController.swift 菜单栏歌词与快捷菜单
   MenuBarLyricsStatusImage.swift  菜单栏歌词位图（白字/居中/滚动）
+  MenuBarNowPlayingCard.swift     菜单栏悬停正在播放卡片
   MenuBarStatusItemVisibility.swift  NSStatusItem 可见性恢复
   MenuBarVisibilityGuide.swift    macOS 26 菜单栏权限引导
   LibraryBookmarkStore.swift      音乐库 Security-Scoped Bookmark

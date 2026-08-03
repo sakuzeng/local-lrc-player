@@ -1,6 +1,7 @@
 import AppKit
 
-final class SeekSlider: NSSlider {
+// 非 final: 菜单栏卡片派生一个接受 first mouse 的子类, 主窗口这套保持默认行为。
+class SeekSlider: NSSlider {
     var onTrackingBegan: (() -> Void)?
     var onTrackingEnded: (() -> Void)?
     /// 悬停/拖动时回调指针位置对应的进度分数(0-1)；nil 表示移出、应隐藏时间气泡。

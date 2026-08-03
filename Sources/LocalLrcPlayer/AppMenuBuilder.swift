@@ -11,7 +11,10 @@ enum AppMenuBuilder {
         mainMenu.addItem(fileMenuItem(playerWindowController: playerWindowController))
         mainMenu.addItem(editMenuItem())
         mainMenu.addItem(playbackMenuItem(playerWindowController: playerWindowController))
-        mainMenu.addItem(viewMenuItem(menuBarLyricsController: menuBarLyricsController))
+        mainMenu.addItem(viewMenuItem(
+            playerWindowController: playerWindowController,
+            menuBarLyricsController: menuBarLyricsController
+        ))
         mainMenu.addItem(windowMenuItem())
         mainMenu.addItem(helpMenuItem())
 
@@ -122,10 +125,23 @@ enum AppMenuBuilder {
         return item
     }
 
-    private static func viewMenuItem(menuBarLyricsController: MenuBarLyricsController) -> NSMenuItem {
+    private static func viewMenuItem(
+        playerWindowController: PlayerWindowController,
+        menuBarLyricsController: MenuBarLyricsController
+    ) -> NSMenuItem {
         let viewMenu = NSMenu(title: "视图")
         viewMenu.delegate = menuBarLyricsController
-        MenuBarLyricsSettingsMenu.appendSettings(to: viewMenu, controller: menuBarLyricsController, leadingSeparator: false)
+
+        let immersiveItem = NSMenuItem(
+            title: "沉浸模式",
+            action: #selector(PlayerWindowController.toggleImmersiveMode),
+            keyEquivalent: "f"
+        )
+        immersiveItem.keyEquivalentModifierMask = [.command, .shift]
+        immersiveItem.target = playerWindowController
+        viewMenu.addItem(immersiveItem)
+
+        MenuBarLyricsSettingsMenu.appendSettings(to: viewMenu, controller: menuBarLyricsController, leadingSeparator: true)
         MenuBarLyricsSettingsMenu.refreshCheckmarks(
             in: viewMenu,
             settings: menuBarLyricsController.currentSettingsSnapshot()

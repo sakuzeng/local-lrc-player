@@ -104,7 +104,7 @@ extension PlayerWindowController {
         let artist = track.artist
         let audioURL = track.audioURL
         nowPlayingArtworkTrackURL = audioURL
-        layout.updateNowPlaying(title: title, artist: artist, artwork: nil)
+        applyNowPlaying(title: title, artist: artist, artwork: nil)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let embedded = TrackMetadataReader.artworkData(from: audioURL).flatMap(NSImage.init(data:))
@@ -113,7 +113,7 @@ extension PlayerWindowController {
                     return
                 }
                 if let embedded {
-                    self.layout.updateNowPlaying(title: title, artist: artist, artwork: embedded)
+                    self.applyNowPlaying(title: title, artist: artist, artwork: embedded)
                 } else {
                     self.loadDownloadedArtwork(for: track, title: title, artist: artist)
                 }
@@ -129,7 +129,7 @@ extension PlayerWindowController {
         let audioURL = track.audioURL
 
         if let cached = ArtworkCache.load(trackId: trackId) {
-            layout.updateNowPlaying(title: title, artist: artist, artwork: cached)
+            applyNowPlaying(title: title, artist: artist, artwork: cached)
             return
         }
 
@@ -142,7 +142,63 @@ extension PlayerWindowController {
             guard let self, let image, self.nowPlayingArtworkTrackURL == audioURL else {
                 return
             }
-            self.layout.updateNowPlaying(title: title, artist: artist, artwork: image)
+            self.applyNowPlaying(title: title, artist: artist, artwork: image)
+        }
+    }
+
+    /// 播放区信息的唯一出口：喂主窗口的同时把快照留在控制器里，
+    /// 菜单栏卡片才能在主窗口关闭时也拿到封面/歌名（layout 只把图存进私有 NSImageView）。
+    func applyNowPlaying(title: String?, artist: String?, artwork: NSImage?) {
+        nowPlayingTitle = title
+        nowPlayingArtist = artist
+        nowPlayingArtwork = artwork
+        layout.updateNowPlaying(title: title, artist: artist, artwork: artwork)
+    }
+
+    func currentNowPlayingSnapshot() -> NowPlayingSnapshot? {
+        guard playingTrackId != nil, let title = nowPlayingTitle, !title.isEmpty else {
+            return nil
+        }
+        let time = playbackController.currentTime() ?? restoredPlaybackPosition ?? 0
+        let lyricLine = LrcParser.activeLineIndex(for: time, in: lrcLines)
+            .flatMap { lrcLines.indices.contains($0) ? lrcLines[$0].text : nil }
+        return NowPlayingSnapshot(
+            title: title,
+            artist: nowPlayingArtist,
+            artwork: nowPlayingArtwork,
+            lyricLine: lyricLine,
+            currentTime: time,
+            duration: resolvedPlaybackDuration() ?? 0,
+            isPlaying: playbackController.isPlaying,
+            mode: playbackMode,
+            volume: layout.volumeSlider.doubleValue
+        )
+    }
+
+    /// 菜单栏卡片调音量：同步主窗口滑杆，复用既有防抖落库。
+    func setVolumeFromRemote(_ value: Double) {
+        let clamped = min(max(value, 0), 1)
+        layout.volumeSlider.doubleValue = clamped
+        playbackController.volume = Float(clamped)
+        scheduleVolumeSave()
+    }
+
+    /// 菜单栏卡片 seek：走 seekToLyricLine 那条干净路径，
+    /// 不碰 commitProgressSeek 的主窗口滑杆状态机（isSeekingWithSlider / seekGeneration）。
+    func seekFromRemote(toFraction fraction: Double) {
+        guard let duration = resolvedPlaybackDuration(), duration > 0 else {
+            return
+        }
+        let target = min(max(duration * fraction, 0), duration)
+        applyPlaybackDisplayTime(target, duration: duration, forceScroll: true)
+        saveCurrentPlaybackState(position: target)
+
+        if playbackController.hasLoadedItem {
+            playbackController.seek(to: target) { [weak self] _ in
+                self?.syncUIWithPlayback()
+            }
+        } else {
+            restoredPlaybackPosition = target
         }
     }
 
@@ -220,6 +276,8 @@ extension PlayerWindowController {
         guard let menuBarLyricsController else {
             return
         }
+
+        menuBarLyricsController.refreshNowPlayingCardIfVisible()
 
         let currentTime = time ?? playbackController.currentTime() ?? 0
         let isPlaying = playbackController.isPlaying

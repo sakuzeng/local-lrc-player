@@ -36,6 +36,25 @@ struct MusicTrack {
         }
         return audioURL.deletingPathExtension().lastPathComponent
     }
+
+    /// 解析「歌手 - 歌名」格式（文件名或合并后的标题常用此写法）。
+    /// 曲目列表与菜单栏卡片共用，ID3 缺歌手时靠它还原出副标题。
+    static func parseArtistTitle(_ text: String) -> (artist: String, title: String)? {
+        let separators = [" - ", " – ", " — ", "－"]
+        for separator in separators {
+            let parts = text.components(separatedBy: separator)
+            guard parts.count >= 2 else {
+                continue
+            }
+            let artist = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = parts.dropFirst().joined(separator: separator)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !artist.isEmpty, !title.isEmpty {
+                return (artist, title)
+            }
+        }
+        return nil
+    }
 }
 
 enum MusicLibrary {

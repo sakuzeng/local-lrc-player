@@ -2,6 +2,41 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-08-03
+
+本日:菜单栏歌词悬停弹出正在播放卡片;主窗口沉浸模式。
+
+### Added
+
+- 沉浸模式（⌘⇧F / 列表顶栏展开按钮 / 视图菜单，Esc 或右上角收起按钮退出）：
+  藏起整个 splitView，换成左侧大封面 + 右侧歌名歌手与放大左对齐歌词 + 底部一整行播放控制。
+  容器是 splitView 的兄弟节点、互斥显隐，日常布局零改动；约束全部落在容器内部，
+  不碰 split 列宽（`doc/ui.md` 记着这条会导致启动约束崩溃的旧账）。
+  不造第二套控件——`lyricsView` / `transportRow` / `progressRow` 在两套容器间搬家，
+  跨视图约束收成两组，切换顺序固定为 卸当前组 → 搬视图 → 装目标组。
+  大封面按内容区宽度取 40%，同时受 460pt 上限与内容区高度压制，窄窗矮窗都不会顶穿控制区。
+  歌词排版新增 `LyricsDisplayProfile`（日常 26/18pt 居中，沉浸 34/22pt 左对齐，行高随字号一起放大）。
+  状态不持久化，启动总是日常模式：省掉 schema 迁移，且启动时封面尚未就绪，沉浸首屏会是空封面。
+
+- 菜单栏悬停正在播放卡片（`MenuBarNowPlayingCard.swift`）：停在菜单栏歌词上 0.3s 弹出 320pt 卡片
+  （48pt 封面 + 歌名/歌手/当前歌词 + 可拖动进度条与两端时间 + 上一首/播放暂停/下一首 + 播放模式 + 音量），
+  指针离开 button 与卡片 0.25s 后收起；点击仍走原有原生菜单，菜单打开期间抑制卡片。
+  tracking area 挂在 `statusItem.button` 上（owner 回调，`.inVisibleRect` 应对歌词滚动导致的宽度变化，
+  statusItem 重建时按 button 身份幂等重挂）；刷新挂在既有的 0.2s 推送链上，卡片没弹出时零开销，不新开 timer。
+  控件全是新实例并 `acceptsFirstMouse`——卡片弹出时 App 通常在后台，否则第一次点击只会激活 App 被吞掉。
+  控制回调复用 `*FromMenu` 与 `cyclePlaybackMode`，另新增 `seekFromRemote` / `setVolumeFromRemote`；
+  前者走 `seekToLyricLine` 那条干净路径，不碰主窗口滑杆的 `isSeekingWithSlider` / `seekGeneration` 状态机。
+  第一期不加独立设置开关，随「在菜单栏显示歌词」总开关一起生效。
+  已知限制：多显示器下只有当前聚焦那块屏的菜单栏悬停会弹卡片（`NSStatusItem` 只有一个 button window，
+  另一块屏是系统镜像，收不到 tracking 事件），点击菜单两块屏都可用。
+
+### Changed
+
+- 菜单栏 status button 不再设 `toolTip`：系统气泡会叠在卡片上方重复同一句歌词，
+  改由卡片第三行显示完整当前行（菜单栏截断时也能看全）。
+- 「歌手 - 歌名」拆分逻辑从 `TrackListDataSource` 的私有实现提到 `MusicTrack.parseArtistTitle`，
+  曲目列表与菜单栏卡片共用；ID3 缺歌手时卡片也能拆出副标题，不再整串挤在标题行。
+
 ## 2026-07-31
 
 本日:修复播放中在 Finder 改文件名后刷新导致播放行错位/播放状态写错曲目/进度条越界崩溃。

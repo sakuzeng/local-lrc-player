@@ -33,6 +33,10 @@ final class PlayerWindowController: NSWindowController {
     var shuffleHistory: [Int] = []
     var nowPlayingArtworkTrackURL: URL?
     var artworkDownloadAttemptedTrackIds: Set<Int64> = []
+    // 播放区信息的控制器侧副本，供菜单栏卡片取用（layout 只把它们存进私有子视图）。
+    var nowPlayingTitle: String?
+    var nowPlayingArtist: String?
+    var nowPlayingArtwork: NSImage?
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
@@ -144,6 +148,11 @@ final class PlayerWindowController: NSWindowController {
                 togglePlayback()
                 return nil
             }
+            // Esc 退出沉浸模式；非沉浸时不拦截，留给搜索框等原有行为。
+            if event.keyCode == 53, modifiers.isEmpty, layout.isImmersive {
+                setImmersiveMode(false)
+                return nil
+            }
 
             return event
         }
@@ -185,6 +194,10 @@ final class PlayerWindowController: NSWindowController {
         layout.playbackModeButton.action = #selector(cyclePlaybackMode)
         layout.locatePlayingButton.target = self
         layout.locatePlayingButton.action = #selector(locatePlayingTrack)
+        layout.immersiveEnterButton.target = self
+        layout.immersiveEnterButton.action = #selector(toggleImmersiveMode)
+        layout.immersiveExitButton.target = self
+        layout.immersiveExitButton.action = #selector(toggleImmersiveMode)
         layout.progressSlider.target = self
         layout.progressSlider.action = #selector(progressChanged)
         layout.progressSlider.isContinuous = true
@@ -459,6 +472,25 @@ final class PlayerWindowController: NSWindowController {
         layout.statusLabel.stringValue = "已定位：\(tracks[index].displayName)"
     }
 
+    /// 沉浸模式：藏起曲目列表，换成大封面 + 大字歌词 + 底部悬浮控制条。
+    /// 不持久化，启动总是日常模式（避免 schema 迁移，且启动时封面尚未就绪，沉浸首屏会是空封面）。
+    @objc func toggleImmersiveMode() {
+        setImmersiveMode(!layout.isImmersive)
+    }
+
+    func setImmersiveMode(_ enabled: Bool) {
+        guard enabled != layout.isImmersive else {
+            return
+        }
+        layout.setImmersiveMode(enabled)
+        layout.statusLabel.stringValue = enabled ? "沉浸模式（Esc 退出）" : "已退出沉浸模式"
+        // 换了排版档位，歌词要按当前播放位置重新落到视口中心。
+        refreshIdlePlaybackDisplay(forceScroll: true)
+        if playbackController.hasLoadedItem {
+            syncUIWithPlayback()
+        }
+    }
+
     @objc func cyclePlaybackMode() {
         playbackMode = playbackMode.next()
         applyPlaybackMode()
@@ -485,7 +517,7 @@ final class PlayerWindowController: NSWindowController {
     }
 
     /// 拖动音量时防抖落库，避免每个 tick 都写 SQLite。
-    private func scheduleVolumeSave() {
+    func scheduleVolumeSave() {
         volumeSaveTimer?.invalidate()
         volumeSaveTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { [weak self] _ in
             guard let self else {

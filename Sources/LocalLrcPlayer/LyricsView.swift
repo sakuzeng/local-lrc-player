@@ -1,6 +1,35 @@
 import AppKit
 import QuartzCore
 
+/// 歌词排版档位。日常模式居中中号字；沉浸模式左对齐放大，行高必须同步放大，
+/// 否则大字被固定行框裁掉。
+struct LyricsDisplayProfile {
+    let activeFontSize: CGFloat
+    let baseFontSize: CGFloat
+    let lineHeight: CGFloat
+    let paragraphSpacing: CGFloat
+    let alignment: NSTextAlignment
+    let horizontalInset: CGFloat
+
+    static let standard = LyricsDisplayProfile(
+        activeFontSize: 26,
+        baseFontSize: 18,
+        lineHeight: 40,
+        paragraphSpacing: 14,
+        alignment: .center,
+        horizontalInset: 28
+    )
+
+    static let immersive = LyricsDisplayProfile(
+        activeFontSize: 34,
+        baseFontSize: 22,
+        lineHeight: 56,
+        paragraphSpacing: 16,
+        alignment: .left,
+        horizontalInset: 8
+    )
+}
+
 final class LyricsView: NSScrollView {
     private struct LyricLineAppearance {
         let fontSize: CGFloat
@@ -27,6 +56,32 @@ final class LyricsView: NSScrollView {
     private var lastScrollPadding: CGFloat = 32
     private let styleAnimationDuration: TimeInterval = 0.28
     private let focusCenterRatio: CGFloat = 0.5
+    private var profile: LyricsDisplayProfile = .standard
+
+    /// 切换排版档位：重排全文并把当前行重新滚回视口中心。
+    func applyProfile(_ profile: LyricsDisplayProfile) {
+        guard profile.activeFontSize != self.profile.activeFontSize
+            || profile.alignment != self.profile.alignment else {
+            return
+        }
+        self.profile = profile
+        cancelStyleAnimation()
+        // 横向 inset 立即写死：applyScrollPadding 在 bounds 尚未稳定（高度为 0）时会提前返回，
+        // 只靠它会让新档位的 inset 拖到下次窗口尺寸变化才生效。
+        let verticalPadding = max(lastScrollPadding, 32)
+        lastScrollPadding = verticalPadding
+        textView.textContainerInset = NSSize(width: profile.horizontalInset, height: verticalPadding)
+        applyScrollPadding(repositionActiveLine: false)
+
+        guard !lines.isEmpty else {
+            return
+        }
+        rebuildLyricText()
+        if let index = activeLineIndex, lineRanges.indices.contains(index) {
+            applyLineStyles(activeIndex: index)
+            scrollLyricRangeToFocus(lineRanges[index], animated: false)
+        }
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -64,6 +119,16 @@ final class LyricsView: NSScrollView {
         hasVerticalScroller = true
         applyScrollPadding(repositionActiveLine: false)
 
+        rebuildLyricText()
+
+        if scrollToTop {
+            textView.scrollToBeginningOfDocument(nil)
+        }
+    }
+
+    /// 按当前档位重排全文。切换排版档位时复用，避免和 render 各写一份拼装逻辑。
+    private func rebuildLyricText() {
+        lineRanges = []
         let text = NSMutableString()
         for line in lines {
             if text.length > 0 {
@@ -79,9 +144,6 @@ final class LyricsView: NSScrollView {
             string: text as String,
             attributes: normalLyricAttributes(paragraphStyle: makeParagraphStyle())
         ))
-        if scrollToTop {
-            textView.scrollToBeginningOfDocument(nil)
-        }
     }
 
     /// 文本布局在 `render` 后常需下一帧才稳定；启动恢复或重新加载歌词时用此方法确保滚动到位。
@@ -137,7 +199,7 @@ final class LyricsView: NSScrollView {
         textView.isSelectable = true
         textView.drawsBackground = false
         textView.backgroundColor = .clear
-        textView.textContainerInset = NSSize(width: 28, height: 32)
+        textView.textContainerInset = NSSize(width: profile.horizontalInset, height: 32)
         textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         textView.autoresizingMask = [.width]
@@ -242,7 +304,7 @@ final class LyricsView: NSScrollView {
         }
 
         lastScrollPadding = verticalPadding
-        textView.textContainerInset = NSSize(width: 28, height: verticalPadding)
+        textView.textContainerInset = NSSize(width: profile.horizontalInset, height: verticalPadding)
         textView.layoutSubtreeIfNeeded()
 
         guard repositionActiveLine,
@@ -297,14 +359,16 @@ final class LyricsView: NSScrollView {
     }
 
     /// 固定行高：字号插值动画只放大字形、不改变行框，避免整段 reflow 抖动。
-    private let fixedLineHeight: CGFloat = 40
+    private var fixedLineHeight: CGFloat {
+        profile.lineHeight
+    }
 
     private func makeParagraphStyle() -> NSParagraphStyle {
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
+        paragraphStyle.alignment = profile.alignment
         paragraphStyle.minimumLineHeight = fixedLineHeight
         paragraphStyle.maximumLineHeight = fixedLineHeight
-        paragraphStyle.paragraphSpacing = 14
+        paragraphStyle.paragraphSpacing = profile.paragraphSpacing
         return paragraphStyle
     }
 
@@ -320,7 +384,7 @@ final class LyricsView: NSScrollView {
         let distance = abs(index - activeIndex)
         if distance == 0 {
             return LyricLineAppearance(
-                fontSize: 26,
+                fontSize: profile.activeFontSize,
                 weight: .bold,
                 color: .controlAccentColor
             )
@@ -328,7 +392,8 @@ final class LyricsView: NSScrollView {
 
         let falloff = min(distance, 4)
         let alpha = max(0.2, 1.0 - CGFloat(falloff) * 0.22)
-        let fontSize = max(16, 18 - CGFloat(min(falloff, 3)) * 0.75)
+        let base = profile.baseFontSize
+        let fontSize = max(base - 2, base - CGFloat(min(falloff, 3)) * 0.75)
         let color: NSColor
         switch falloff {
         case 1:
