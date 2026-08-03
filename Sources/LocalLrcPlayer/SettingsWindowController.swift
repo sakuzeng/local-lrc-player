@@ -23,6 +23,16 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     private let menuBarWidthPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let menuBarCustomWidthButton = NSButton(title: "自定义宽度…", target: nil, action: nil)
     private let menuBarShowIconButton = NSButton(checkboxWithTitle: "显示音符图标", target: nil, action: nil)
+    private let milestoneAlertsButton = NSButton(
+        checkboxWithTitle: "播放次数达到里程碑时提醒我",
+        target: nil,
+        action: nil
+    )
+    private let memoryAlertsButton = NSButton(
+        checkboxWithTitle: "启动时回顾「往年今日」听过的歌",
+        target: nil,
+        action: nil
+    )
 
     private var contentScrollView: NSScrollView?
     private var lyricDownloadBusy = false
@@ -56,6 +66,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         bindActions()
         reloadLibraries()
         refreshMenuBarControls()
+        refreshMilestoneControls()
         updateCookieButtonTitle()
     }
 
@@ -71,6 +82,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         NSApp.activate(ignoringOtherApps: true)
         reloadLibraries()
         refreshMenuBarControls()
+        refreshMilestoneControls()
         resetLyricDownloadBusyIfIdle()
         scrollContentToTop()
     }
@@ -248,7 +260,12 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             panel: menuBarPanel
         )
 
-        let root = NSStackView(views: [librarySection, lyricsSection, menuBarSection])
+        let milestoneSection = makeSection(
+            title: "播放里程碑",
+            panel: makeGroupedPanel(rows: [milestoneAlertsButton, memoryAlertsButton])
+        )
+
+        let root = NSStackView(views: [librarySection, lyricsSection, menuBarSection, milestoneSection])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 24
@@ -441,6 +458,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         menuBarCustomWidthButton.action = #selector(promptCustomMenuBarWidth)
         menuBarShowIconButton.target = self
         menuBarShowIconButton.action = #selector(toggleMenuBarShowIcon)
+        milestoneAlertsButton.target = self
+        milestoneAlertsButton.action = #selector(toggleMilestoneAlerts)
+        memoryAlertsButton.target = self
+        memoryAlertsButton.action = #selector(toggleMemoryAlerts)
     }
 
     private func updateLibraryButtons() {
@@ -542,6 +563,31 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
     @objc private func promptCustomMenuBarWidth() {
         menuBarLyricsController?.promptCustomMenuBarLyricsMaxWidth(self)
         refreshMenuBarControls()
+    }
+
+    @objc private func toggleMilestoneAlerts(_ sender: NSButton) {
+        do {
+            try appSettingsRepository.updateMilestoneAlerts(enabled: sender.state == .on)
+            refreshMilestoneControls()
+        } catch {
+            presentError(error.localizedDescription)
+        }
+    }
+
+    @objc private func toggleMemoryAlerts(_ sender: NSButton) {
+        do {
+            try appSettingsRepository.updateMemoryAlerts(enabled: sender.state == .on)
+            refreshMilestoneControls()
+        } catch {
+            presentError(error.localizedDescription)
+        }
+    }
+
+    /// 弹窗里点「不再提醒」后也要回来刷新，否则设置窗口还显示成开着。
+    func refreshMilestoneControls() {
+        let settings = (try? appSettingsRepository.settings()) ?? .defaults
+        milestoneAlertsButton.state = settings.milestoneAlertsEnabled ? .on : .off
+        memoryAlertsButton.state = settings.memoryAlertsEnabled ? .on : .off
     }
 
     @objc private func toggleMenuBarShowIcon(_ sender: NSButton) {

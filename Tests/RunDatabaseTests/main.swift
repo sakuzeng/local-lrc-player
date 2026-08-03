@@ -276,6 +276,7 @@ final class AppSettingsRepositoryTests {
     func runAll() throws {
         try runIsolated { try self.testDefaultSettingsAfterV3Migration() }
         try runIsolated { try self.testUpdateMenuBarLyricsPersists() }
+        try runIsolated { try self.testMilestoneAlertsDefaultOnAndPersists() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -316,6 +317,189 @@ final class AppSettingsRepositoryTests {
         try assertEqual(settings.menuBarLyricsEnabled, false)
         try assertEqual(settings.menuBarLyricsMaxWidth, 200)
         try assertEqual(settings.menuBarLyricsShowIcon, false)
+    }
+
+    private func testMilestoneAlertsDefaultOnAndPersists() throws {
+        try assertEqual(try repository.settings().milestoneAlertsEnabled, true, "v5 迁移默认开启")
+
+        try repository.updateMilestoneAlerts(enabled: false)
+        try assertEqual(try repository.settings().milestoneAlertsEnabled, false)
+
+        // 两组设置写的是同一行，互不覆盖。
+        try repository.updateMenuBarLyrics(showIcon: false)
+        try assertEqual(try repository.settings().milestoneAlertsEnabled, false, "改菜单栏设置不应重置里程碑开关")
+        try repository.updateMilestoneAlerts(enabled: true)
+        try assertEqual(try repository.settings().menuBarLyricsShowIcon, false, "改里程碑开关不应重置菜单栏设置")
+    }
+}
+
+final class PlayHistoryRepositoryTests {
+    private var database: AppDatabase!
+    private var libraryRepository: LibraryRepository!
+    private var trackRepository: TrackRepository!
+    private var repository: PlayHistoryRepository!
+    private var tempRoot: URL!
+
+    func runAll() throws {
+        try runIsolated { try self.testOnlyCountedPlaysCountTowardMilestones() }
+        try runIsolated { try self.testFirstPlayedAtUsesFullHistory() }
+        try runIsolated { try self.testMilestoneThresholdsFireOnExactCount() }
+        try runIsolated { try self.testMostPlayedTrackOnDay() }
+        try testMonthOffsetHandlesShortMonths()
+        try runIsolated { try self.testFindMatchPrefersLongestOffsetWithData() }
+    }
+
+    private func runIsolated(_ work: () throws -> Void) throws {
+        try setUp()
+        defer { tearDown() }
+        try work()
+    }
+
+    private func setUp() throws {
+        tempRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("LocalLrcPlayerTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+        database = try AppDatabase(fileURL: tempRoot.appendingPathComponent("test.sqlite"))
+        libraryRepository = LibraryRepository(database: database)
+        trackRepository = TrackRepository(database: database)
+        repository = PlayHistoryRepository(database: database)
+    }
+
+    private func tearDown() {
+        if let tempRoot {
+            try? FileManager.default.removeItem(at: tempRoot)
+        }
+        database = nil
+        libraryRepository = nil
+        trackRepository = nil
+        repository = nil
+        tempRoot = nil
+    }
+
+    private func makeTrackId() throws -> Int64 {
+        let library = tempRoot.appendingPathComponent("Library", isDirectory: true)
+        try FileManager.default.createDirectory(at: library, withIntermediateDirectories: true)
+        try Data("milestone-song".utf8).write(to: library.appendingPathComponent("song.mp3"))
+        let registered = try libraryRepository.registerLibrary(at: library)
+        _ = try trackRepository.sync(libraryId: registered.id, folderURL: library)
+        guard let track = try trackRepository.masterPlaylistTracks().first else {
+            throw TestFailure.message("track should exist")
+        }
+        return track.id
+    }
+
+    /// 里程碑只数「听满阈值」的行；跳过产生的行不计入。
+    /// 这条同时锁住「历史数据默认 counted = 0，里程碑从功能上线后重新起算」。
+    private func testOnlyCountedPlaysCountTowardMilestones() throws {
+        let trackId = try makeTrackId()
+
+        for _ in 0 ..< 5 {
+            _ = try repository.recordPlayback(trackId: trackId)
+        }
+        try assertEqual(try repository.countedPlayCount(trackId: trackId), 0, "只开始播放不算有效播放")
+
+        let counted = try repository.recordPlayback(trackId: trackId)
+        try repository.markCounted(historyId: counted)
+        try assertEqual(try repository.countedPlayCount(trackId: trackId), 1)
+    }
+
+    /// 首次播放时间取全量历史，不受计数口径影响。
+    private func testFirstPlayedAtUsesFullHistory() throws {
+        let trackId = try makeTrackId()
+        try assertTrue(try repository.firstPlayedAt(trackId: trackId) == nil, "无记录时应为 nil")
+
+        let before = Date()
+        _ = try repository.recordPlayback(trackId: trackId)
+        guard let first = try repository.firstPlayedAt(trackId: trackId) else {
+            throw TestFailure.message("first play should exist")
+        }
+        try assertTrue(first.timeIntervalSince1970 >= before.timeIntervalSince1970 - 1, "首播时间应接近刚才")
+        try assertEqual(try repository.countedPlayCount(trackId: trackId), 0, "首播时间不依赖 counted")
+    }
+
+    /// 「往年今日」按本地日期分组，取那天听得最多的一首。
+    private func testMostPlayedTrackOnDay() throws {
+        let trackId = try makeTrackId()
+
+        // 30 天前那天听了 3 次，31 天前听了 1 次。
+        let calendar = Calendar.current
+        guard let dayA = calendar.date(byAdding: .day, value: -30, to: Date()),
+              let dayB = calendar.date(byAdding: .day, value: -31, to: Date()) else {
+            throw TestFailure.message("date math failed")
+        }
+        for _ in 0 ..< 3 {
+            _ = try repository.recordPlayback(trackId: trackId, at: dayA)
+        }
+        _ = try repository.recordPlayback(trackId: trackId, at: dayB)
+
+        let keyA = OnThisDayMemory.dayKey(for: dayA)
+        guard let hit = try repository.mostPlayedTrack(onDay: keyA) else {
+            throw TestFailure.message("should find a play on that day")
+        }
+        try assertEqual(hit.track.id, trackId)
+        try assertEqual(hit.plays, 3, "只数那一天的记录")
+
+        let keyB = OnThisDayMemory.dayKey(for: dayB)
+        try assertEqual(try repository.mostPlayedTrack(onDay: keyB)?.plays, 1)
+
+        let today = OnThisDayMemory.dayKey(for: Date())
+        try assertTrue(try repository.mostPlayedTrack(onDay: today) == nil, "今天没记录应为 nil")
+    }
+
+    /// 往前推月份必须走 Calendar：3 月 31 日减一个月是 2 月 28/29 日，
+    /// 减 30 天则会落到 3 月 1 日，那是完全不同的一天。
+    private func testMonthOffsetHandlesShortMonths() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        guard let timeZone = TimeZone(identifier: "Asia/Shanghai") else {
+            throw TestFailure.message("timezone unavailable")
+        }
+        calendar.timeZone = timeZone
+
+        var components = DateComponents()
+        components.year = 2026
+        components.month = 3
+        components.day = 31
+        components.hour = 12
+        guard let march31 = calendar.date(from: components) else {
+            throw TestFailure.message("date construction failed")
+        }
+
+        let days = OnThisDayMemory.candidateDays(from: march31, calendar: calendar)
+        guard let oneMonthAgo = days.first(where: { $0.monthsAgo == 1 }) else {
+            throw TestFailure.message("missing 1-month candidate")
+        }
+        try assertEqual(OnThisDayMemory.dayKey(for: oneMonthAgo.day, calendar: calendar), "2026-02-28")
+    }
+
+    /// 有数据的偏移里取跨度最长的那个，这样数据攒够一年后自动变成真正的「往年今日」。
+    private func testFindMatchPrefersLongestOffsetWithData() throws {
+        let trackId = try makeTrackId()
+        _ = try repository.recordPlayback(trackId: trackId)
+        guard let record = try trackRepository.masterPlaylistTracks().first else {
+            throw TestFailure.message("track should exist")
+        }
+
+        var queried: [String] = []
+        let match = OnThisDayMemory.findMatch(lookup: { day in
+            queried.append(day)
+            // 只有 3 个月前那天有数据。
+            let target = OnThisDayMemory.dayKey(
+                for: Calendar.current.date(byAdding: .month, value: -3, to: Date())!
+            )
+            return day == target ? (record, 5) : nil
+        })
+
+        try assertEqual(match?.monthsAgo, 3)
+        try assertEqual(match?.plays, 5)
+        try assertEqual(queried.count, 3, "命中 3 个月后就不再往下查 1 个月")
+    }
+
+    private func testMilestoneThresholdsFireOnExactCount() throws {
+        try assertTrue(MilestoneCelebration.threshold(reachedBy: 10) != nil, "10 是里程碑")
+        try assertTrue(MilestoneCelebration.threshold(reachedBy: 100) != nil, "100 是里程碑")
+        try assertTrue(MilestoneCelebration.threshold(reachedBy: 11) == nil, "只在恰好命中时触发一次")
+        try assertTrue(MilestoneCelebration.threshold(reachedBy: 0) == nil, "0 次不触发")
     }
 }
 
@@ -409,6 +593,7 @@ do {
     try TrackContentHasherTests().runAll()
     try MasterPlaylistRepositoryTests().runAll()
     try AppSettingsRepositoryTests().runAll()
+    try PlayHistoryRepositoryTests().runAll()
     try PlayerStateRepositoryTests().runAll()
     try MenuBarLyricsMaxWidthTests().runAll()
     print("All tests passed.")

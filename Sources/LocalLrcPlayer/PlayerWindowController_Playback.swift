@@ -62,9 +62,15 @@ extension PlayerWindowController {
         layout.setPlayButtonShowsPause(true)
         updateControlState()
 
+        // 上一首若已攒够里程碑，切歌就是弹窗时机。
+        flushPendingMilestone()
+        currentPlayHistoryId = nil
+        listenedSecondsThisPlay = 0
+        hasCountedCurrentPlayback = false
+
         if let trackId = track.id {
             let positionForHistory = resumePosition ?? restoredPlaybackPosition ?? highlightAt
-            try? playHistoryRepository.recordPlayback(
+            currentPlayHistoryId = try? playHistoryRepository.recordPlayback(
                 trackId: trackId,
                 position: positionForHistory
             )
@@ -372,6 +378,8 @@ extension PlayerWindowController {
     }
 
     func playerItemDidEnd() {
+        flushPendingMilestone()
+
         guard let currentTrackIndex else {
             return
         }
@@ -594,6 +602,7 @@ extension PlayerWindowController {
             applyPlaybackDisplayTime(current, duration: duration, forceScroll: false)
 
             if playbackController.isPlaying {
+                accumulateListenedTime(tick: 0.2, duration: duration)
                 lastSavedPlaybackTick += 1
                 if lastSavedPlaybackTick >= 25 {
                     lastSavedPlaybackTick = 0
@@ -627,6 +636,54 @@ extension PlayerWindowController {
 
     /// 以 playingTrackId 为准，不看 currentTrackIndex ——
     /// 列表被搜索过滤或文件改名重排后，索引指向的可能已经是另一首歌。
+    /// 累加真实播放秒数而不是读 currentTime —— 后者会被拖动进度条骗过去。
+    /// 判定沿用 Last.fm 的 scrobble 规则：曲长 > 30 秒，且听满一半或 4 分钟（取较小者）。
+    private func accumulateListenedTime(tick: TimeInterval, duration: TimeInterval) {
+        guard !hasCountedCurrentPlayback, let historyId = currentPlayHistoryId else {
+            return
+        }
+
+        listenedSecondsThisPlay += tick
+        guard duration > 30 else {
+            return
+        }
+        let required = min(duration / 2, 240)
+        guard listenedSecondsThisPlay >= required else {
+            return
+        }
+
+        hasCountedCurrentPlayback = true
+        try? playHistoryRepository.markCounted(historyId: historyId)
+        checkMilestoneAfterCounting()
+    }
+
+    private func checkMilestoneAfterCounting() {
+        guard (try? appSettingsRepository.settings())?.milestoneAlertsEnabled ?? true,
+              let trackId = playingTrackId,
+              let count = try? playHistoryRepository.countedPlayCount(trackId: trackId),
+              MilestoneCelebration.threshold(reachedBy: count) != nil else {
+            return
+        }
+
+        let firstPlayed = (try? playHistoryRepository.firstPlayedAt(trackId: trackId)) ?? Date()
+        pendingMilestone = MilestoneCelebration.content(
+            count: count,
+            title: nowPlayingTitle ?? "",
+            artist: nowPlayingArtist,
+            artwork: nowPlayingArtwork,
+            firstPlayedAt: firstPlayed
+        )
+    }
+
+    /// 本曲播完或被切走时把攒着的里程碑弹出来。
+    func flushPendingMilestone() {
+        guard let milestone = pendingMilestone else {
+            return
+        }
+        pendingMilestone = nil
+        showCelebration(milestone)
+    }
+
     func saveCurrentPlaybackState(position: TimeInterval? = nil) {
         guard let trackId = playingTrackId else {
             return

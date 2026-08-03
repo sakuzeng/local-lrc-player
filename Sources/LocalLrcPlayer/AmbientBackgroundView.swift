@@ -40,13 +40,13 @@ final class AmbientBackgroundView: NSView {
     }
 
     func apply(artwork: NSImage?) {
-        guard let artwork, let base = Self.dominantColor(of: artwork) else {
+        guard let artwork, let base = ArtworkColor.dominant(of: artwork) else {
             fade(topLeadingBlob, to: nil, alpha: 0)
             fade(bottomTrailingBlob, to: nil, alpha: 0)
             return
         }
-        fade(topLeadingBlob, to: Self.shiftedHue(base, by: 0.04), alpha: 0.5)
-        fade(bottomTrailingBlob, to: Self.shiftedHue(base, by: -0.06), alpha: 0.4)
+        fade(topLeadingBlob, to: ArtworkColor.shiftedHue(base, by: 0.04), alpha: 0.5)
+        fade(bottomTrailingBlob, to: ArtworkColor.shiftedHue(base, by: -0.06), alpha: 0.4)
     }
 
     private func fade(_ blob: CAGradientLayer, to color: NSColor?, alpha: CGFloat) {
@@ -63,62 +63,5 @@ final class AmbientBackgroundView: NSView {
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         blob.colors = target
         blob.add(animation, forKey: "colors")
-    }
-
-    /// 1x1 下采样取平均色；平均色常发灰，拉一把饱和度、把亮度压进中间段再用。
-    private static func dominantColor(of image: NSImage) -> NSColor? {
-        guard let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let context = CGContext(
-                  data: nil, width: 1, height: 1,
-                  bitsPerComponent: 8, bytesPerRow: 4,
-                  space: CGColorSpaceCreateDeviceRGB(),
-                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              ) else {
-            return nil
-        }
-
-        context.interpolationQuality = .medium
-        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
-        guard let data = context.data else {
-            return nil
-        }
-
-        let pixel = data.bindMemory(to: UInt8.self, capacity: 4)
-        let average = NSColor(
-            deviceRed: CGFloat(pixel[0]) / 255,
-            green: CGFloat(pixel[1]) / 255,
-            blue: CGFloat(pixel[2]) / 255,
-            alpha: 1
-        )
-
-        var hue: CGFloat = 0
-        var saturation: CGFloat = 0
-        var brightness: CGFloat = 0
-        var alpha: CGFloat = 0
-        average.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        return NSColor(
-            hue: hue,
-            saturation: min(max(saturation * 1.6, 0.3), 0.85),
-            brightness: min(max(brightness, 0.45), 0.8),
-            alpha: 1
-        )
-    }
-
-    private static func shiftedHue(_ color: NSColor, by delta: CGFloat) -> NSColor {
-        guard let rgb = color.usingColorSpace(.deviceRGB) else {
-            return color
-        }
-        var hue: CGFloat = 0
-        var saturation: CGFloat = 0
-        var brightness: CGFloat = 0
-        var alpha: CGFloat = 0
-        rgb.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
-        let shifted = (hue + delta).truncatingRemainder(dividingBy: 1)
-        return NSColor(
-            hue: shifted < 0 ? shifted + 1 : shifted,
-            saturation: saturation,
-            brightness: brightness,
-            alpha: alpha
-        )
     }
 }

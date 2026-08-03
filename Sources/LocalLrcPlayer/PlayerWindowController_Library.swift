@@ -26,6 +26,11 @@ extension PlayerWindowController {
                 deduplicated: summary.deduplicated
             )
             updateControlState()
+
+            // 音乐库同步完才有 tracks 可 JOIN；延一帧避开启动时的窗口恢复动画。
+            DispatchQueue.main.async { [weak self] in
+                self?.presentOnThisDayMemoryIfAvailable()
+            }
         } catch {
             layout.statusLabel.stringValue = "数据库初始化失败：\(error.localizedDescription)"
         }

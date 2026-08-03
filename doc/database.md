@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘�
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 4`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量） |
+| Schema 版本 | `PRAGMA user_version = 6`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量 + v5 播放里程碑 + v6 往年今日） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -195,10 +195,41 @@ erDiagram
 | `menu_bar_lyrics_enabled` | INTEGER | 是否在菜单栏显示歌词（0/1，默认 1） |
 | `menu_bar_lyrics_max_width` | REAL | 菜单栏歌词最大宽度 pt（默认 160；预设 120/140/160 或自定义 80–400） |
 | `menu_bar_lyrics_show_icon` | INTEGER | 是否显示音符图标（0/1，默认 1）；图标固定在歌词右侧 |
+| `milestone_alerts_enabled` | INTEGER | 播放次数达到里程碑时是否弹窗（0/1，默认 1；v5） |
+| `memory_alerts_enabled` | INTEGER | 启动时是否回顾「往年今日」（0/1，默认 1；v6） |
+| `last_memory_shown_on` | TEXT | 「往年今日」上次弹出的日期 `YYYY-MM-DD`（本地时区，NULL 表示没弹过；v6） |
 
 ---
 
-### `play_history` / `lyric_download_log`
+### `play_history` — 播放记录与里程碑计数
+
+通过 `track_id` FK → `tracks(id)` ON DELETE CASCADE。v1 三列不变，v5 增加 `counted`。
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `counted` | INTEGER | 是否算作一次「有效播放」（0/1，默认 0；v5） |
+
+关键约定：
+
+- 每次开始播放都插一行（含跳过），`recordPlayback` 返回 rowid；听满阈值后由 `markCounted` 回标 `counted = 1`。
+- 有效播放沿用 Last.fm 的 scrobble 规则：曲长 > 30 秒，且实际听满一半或 4 分钟（取较小者）。
+  判定累加的是真实播放秒数（tick 里累加），不是 `currentTime`，否则拖动进度条就能骗过去。
+- 里程碑只数 `counted = 1` 的行。v5 迁移给历史行一律留默认 0，
+  所以里程碑从功能上线后重新起算 —— 否则一批老歌会在首次启动时集体弹窗。
+- 「首次播放时间」`firstPlayedAt` 取全量历史的 `MIN(started_at)`，不看 `counted`：
+  「这首歌你从哪天开始听」独立于计数口径，上线前的历史同样成立。
+
+「往年今日」（`OnThisDayMemory` + `mostPlayedTrack(onDay:)`）：
+
+- 按 `date(started_at,'unixepoch','localtime')` 分组，取那天播放次数最多的一首（同票取最早那次）。
+  同样不看 `counted` —— 回顾的是「你那天在听什么」，跳过的播放也是当天的真实痕迹。
+- 偏移量按 12 → 6 → 3 → 1 个月依次取第一个有记录的。现在只可能命中 1 个月；
+  等历史攒够一年，同一段代码自己变成真正的「往年今日」，文案也自动从「1 个月前」变成「1 年前」。
+- 往前推月份必须走 `Calendar.date(byAdding: .month,)`，不能减固定秒数：
+  3 月 31 日减一个月是 2 月 28/29 日，减 30 天则会落到 3 月 1 日。
+- 每天最多弹一次，靠 `app_settings.last_memory_shown_on` 去重；那天没有记录就安静，不弹空窗。
+
+### `lyric_download_log`
 
 与 v1 相同，通过 `track_id` FK → `tracks(id)` ON DELETE CASCADE。
 
@@ -215,7 +246,7 @@ TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
 PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
 PlayerStateRepository.swift player_state 读写（含主窗口 frame）
 AppSettingsRepository.swift app_settings 读写（菜单栏歌词设置）
-PlayHistoryRepository.swift play_history INSERT
+PlayHistoryRepository.swift play_history 记录/计数/首播时间
 LyricLogRepository.swift    lyric_download_log INSERT
 MenuBarLyricsController.swift 菜单栏歌词 UI + 设置菜单
 ```
@@ -278,7 +309,8 @@ SettingsWindowController → LibraryRepository.deleteLibrary(id)
 ./test.sh
 ```
 
-覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理、音量默认值/持久化/越界钳制。
+覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理、音量默认值/持久化/越界钳制、里程碑开关默认值与互不覆盖、有效播放计数与首播时间口径、
+往年今日的按日聚合/月份回推的短月边界/偏移量优先级。
 
 ---
 

@@ -40,7 +40,7 @@ open build/LocalLrcPlayer.app
 ## 架构
 
 数据层(SQLite,索引的唯一真相来源)。 `AppDatabase` 持有连接并执行 schema 迁移
-(当前 v3),数据库在 `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite`。
+(当前 v6),数据库在 `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite`。
 每张表都有专门的 repository(`LibraryRepository`、`TrackRepository`、
 `PlaylistRepository`、`PlayerStateRepository`、`AppSettingsRepository`、
 `PlayHistoryRepository`、`LyricLogRepository`);记录结构体在 `DatabaseModels`。

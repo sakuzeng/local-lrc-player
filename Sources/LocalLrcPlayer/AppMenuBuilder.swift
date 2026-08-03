@@ -141,6 +141,15 @@ enum AppMenuBuilder {
         immersiveItem.target = playerWindowController
         viewMenu.addItem(immersiveItem)
 
+        // 开发用预览入口，数据层接上后删掉。
+        let milestoneItem = NSMenuItem(
+            title: "预览里程碑弹窗",
+            action: #selector(PlayerWindowController.previewMilestoneCelebration),
+            keyEquivalent: ""
+        )
+        milestoneItem.target = playerWindowController
+        viewMenu.addItem(milestoneItem)
+
         MenuBarLyricsSettingsMenu.appendSettings(to: viewMenu, controller: menuBarLyricsController, leadingSeparator: true)
         MenuBarLyricsSettingsMenu.refreshCheckmarks(
             in: viewMenu,

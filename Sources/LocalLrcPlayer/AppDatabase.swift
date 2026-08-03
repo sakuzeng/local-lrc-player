@@ -21,7 +21,7 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
-    static let currentSchemaVersion = 4
+    static let currentSchemaVersion = 6
 
     static let shared: AppDatabase = {
         do {
@@ -116,6 +116,12 @@ final class AppDatabase {
             if try currentSchemaVersion(db) < 4 {
                 try Self.applyMigrationV4(db, database: self)
             }
+            if try currentSchemaVersion(db) < 5 {
+                try Self.applyMigrationV5(db, database: self)
+            }
+            if try currentSchemaVersion(db) < 6 {
+                try Self.applyMigrationV6(db, database: self)
+            }
 
             let version = try currentSchemaVersion(db)
             if version < Self.currentSchemaVersion {
@@ -148,6 +154,31 @@ final class AppDatabase {
             db,
             sql: "ALTER TABLE player_state ADD COLUMN volume REAL NOT NULL DEFAULT 1;"
         )
+    }
+
+    /// 里程碑：`counted` 区分「开始播放」与「听满阈值的有效播放」。
+    /// 历史行一律默认 0，里程碑因此从功能上线后重新起算（否则一堆歌会在首次启动时集体弹窗）。
+    private static func applyMigrationV5(_ db: OpaquePointer, database: AppDatabase) throws {
+        let statements = [
+            "ALTER TABLE play_history ADD COLUMN counted INTEGER NOT NULL DEFAULT 0;",
+            "ALTER TABLE app_settings ADD COLUMN milestone_alerts_enabled INTEGER NOT NULL DEFAULT 1;",
+            "CREATE INDEX IF NOT EXISTS idx_play_history_counted ON play_history(track_id, counted);"
+        ]
+        for sql in statements {
+            try database.exec(db, sql: sql)
+        }
+    }
+
+    /// 「往年今日」：开关 + 上次弹出的日期（YYYY-MM-DD，本地时区），每天最多弹一次。
+    private static func applyMigrationV6(_ db: OpaquePointer, database: AppDatabase) throws {
+        let statements = [
+            "ALTER TABLE app_settings ADD COLUMN memory_alerts_enabled INTEGER NOT NULL DEFAULT 1;",
+            "ALTER TABLE app_settings ADD COLUMN last_memory_shown_on TEXT;",
+            "CREATE INDEX IF NOT EXISTS idx_play_history_started ON play_history(started_at);"
+        ]
+        for sql in statements {
+            try database.exec(db, sql: sql)
+        }
     }
 
     private func currentSchemaVersion(_ db: OpaquePointer) throws -> Int {

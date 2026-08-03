@@ -8,10 +8,12 @@ final class PlayerWindowController: NSWindowController {
     let libraryRepository = LibraryRepository()
     let trackRepository = TrackRepository()
     let playHistoryRepository = PlayHistoryRepository()
+    let appSettingsRepository = AppSettingsRepository()
     let playerStateRepository = PlayerStateRepository()
     lazy var artworkDownloadService = ArtworkDownloadService(lyricSearchService: lyricSearchService)
     var menuBarLyricsController: MenuBarLyricsController?
     weak var settingsWindowController: SettingsWindowController?
+    var celebrationPanelController: CelebrationPanelController?
     var lyricCandidateDialog: LyricCandidateDialog?
 
     var tracks: [MusicTrack] = []
@@ -37,9 +39,17 @@ final class PlayerWindowController: NSWindowController {
     var nowPlayingTitle: String?
     var nowPlayingArtist: String?
     var nowPlayingArtwork: NSImage?
+    // 里程碑计数：本次播放对应的 play_history 行、已实际播放的秒数、是否已计为有效播放。
+    var currentPlayHistoryId: Int64?
+    var listenedSecondsThisPlay: TimeInterval = 0
+    var hasCountedCurrentPlayback = false
+    /// 命中的里程碑先存着，等这首播完或被切走再弹 —— 播放中途打断的正是要庆祝的那个体验。
+    var pendingMilestone: CelebrationContent?
 
     private var mouseDownMonitor: Any?
     private var keyDownMonitor: Any?
+    private var statusRestoreTimer: Timer?
+    private var pendingStatusRestoreText: String?
     private var windowToolbar: PlayerWindowToolbar?
     private var windowFrameSaveTimer: Timer?
     private var volumeSaveTimer: Timer?
@@ -66,6 +76,7 @@ final class PlayerWindowController: NSWindowController {
         progressTimer?.invalidate()
         windowFrameSaveTimer?.invalidate()
         volumeSaveTimer?.invalidate()
+        statusRestoreTimer?.invalidate()
         if let mouseDownMonitor {
             NSEvent.removeMonitor(mouseDownMonitor)
         }
@@ -362,6 +373,29 @@ final class PlayerWindowController: NSWindowController {
         }
     }
 
+    /// 一次性操作反馈（切模式、切显示模式、定位）。statusLabel 平时承载的是持续状态
+    /// （正在播放某首、共多少首），所以这类提示必须自己让位，否则会一直占着不走。
+    /// 到点前若已被别的消息覆盖，就不再回填，免得把更新的状态顶掉。
+    func showTransientStatus(_ message: String, restoringAfter seconds: TimeInterval = 3) {
+        // 连续触发多条提示时，回填目标始终是最初那条持续状态，而不是上一条提示。
+        let previous = pendingStatusRestoreText ?? layout.statusLabel.stringValue
+        pendingStatusRestoreText = previous
+        layout.statusLabel.stringValue = message
+
+        statusRestoreTimer?.invalidate()
+        statusRestoreTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+            guard let self else {
+                return
+            }
+            statusRestoreTimer = nil
+            pendingStatusRestoreText = nil
+            guard layout.statusLabel.stringValue == message else {
+                return
+            }
+            layout.statusLabel.stringValue = previous
+        }
+    }
+
     func saveSession() {
         saveCurrentPlaybackState()
         saveWindowFrame()
@@ -469,7 +503,7 @@ final class PlayerWindowController: NSWindowController {
         }
 
         trackListDataSource.selectRow(index, scrollToVisible: true, isUserInitiated: false)
-        layout.statusLabel.stringValue = "已定位：\(tracks[index].displayName)"
+        showTransientStatus("已定位：\(tracks[index].displayName)")
     }
 
     /// 沉浸模式：藏起曲目列表，换成大封面 + 大字歌词 + 底部悬浮控制条。
@@ -483,7 +517,9 @@ final class PlayerWindowController: NSWindowController {
             return
         }
         layout.setImmersiveMode(enabled)
-        layout.statusLabel.stringValue = enabled ? "沉浸模式（Esc 退出）" : "已退出沉浸模式"
+        if enabled {
+            showTransientStatus("沉浸模式（Esc 退出）")
+        }
         // 换了排版档位，歌词要按当前播放位置重新落到视口中心。
         refreshIdlePlaybackDisplay(forceScroll: true)
         if playbackController.hasLoadedItem {
@@ -491,11 +527,68 @@ final class PlayerWindowController: NSWindowController {
         }
     }
 
+    /// 里程碑弹窗预览（开发用）。数据层还没接，先拿当前曲目和假次数看视觉；
+    /// 真正的触发接上有效播放计数后会替换掉这个入口。
+    @objc func previewMilestoneCelebration() {
+        let index = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack()
+        let track = index.flatMap { tracks.indices.contains($0) ? tracks[$0] : nil }
+        showCelebration(MilestoneCelebration.content(
+            count: 100,
+            title: nowPlayingTitle ?? track?.displayName ?? "妈妈的话",
+            artist: nowPlayingArtist,
+            artwork: nowPlayingArtwork,
+            firstPlayedAt: Date().addingTimeInterval(-42 * 24 * 3600)
+        ))
+    }
+
+    /// 启动同步完音乐库后调用（要先有 tracks 才 JOIN 得到曲目）。
+    /// 每天最多弹一次，且只在那天真有记录时才弹 —— 没数据就安静，不弹空窗。
+    func presentOnThisDayMemoryIfAvailable() {
+        let settings = (try? appSettingsRepository.settings()) ?? .defaults
+        let today = OnThisDayMemory.dayKey(for: Date())
+        guard settings.memoryAlertsEnabled, settings.lastMemoryShownOn != today else {
+            return
+        }
+
+        // try? 套在返回 Optional 的方法上会得到双层 Optional，用 ?? nil 压平。
+        let found = (try? OnThisDayMemory.findMatch(lookup: { day in
+            try playHistoryRepository.mostPlayedTrack(onDay: day)
+        })) ?? nil
+        guard let match = found else {
+            return
+        }
+
+        try? appSettingsRepository.markMemoryShown(on: today)
+        let artwork = ArtworkCache.load(trackId: match.track.id)
+            ?? TrackMetadataReader.artworkData(from: match.track.audioURL).flatMap(NSImage.init(data:))
+        showCelebration(OnThisDayMemory.content(for: match, artwork: artwork))
+    }
+
+    func showCelebration(_ content: CelebrationContent) {
+        celebrationPanelController?.close()
+        let controller = CelebrationPanelController(content: content) { [weak self] in
+            guard let self else {
+                return
+            }
+            switch content.kind {
+            case .milestone:
+                try? appSettingsRepository.updateMilestoneAlerts(enabled: false)
+                showTransientStatus("已关闭里程碑提醒，可在 ⌘, 设置中重新打开")
+            case .memory:
+                try? appSettingsRepository.updateMemoryAlerts(enabled: false)
+                showTransientStatus("已关闭往年今日提醒，可在 ⌘, 设置中重新打开")
+            }
+            settingsWindowController?.refreshMilestoneControls()
+        }
+        celebrationPanelController = controller
+        controller.present(over: window)
+    }
+
     @objc func cyclePlaybackMode() {
         playbackMode = playbackMode.next()
         applyPlaybackMode()
         try? playerStateRepository.updatePlaybackMode(playbackMode)
-        layout.statusLabel.stringValue = "播放模式：\(playbackMode.title)"
+        showTransientStatus("播放模式：\(playbackMode.title)")
     }
 
     private func restorePlaybackMode() {
