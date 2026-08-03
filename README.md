@@ -16,6 +16,10 @@
 
 ![菜单栏悬停卡片](./doc/screenshots/menubar-card.png)
 
+播放里程碑（面板底色与大字取自封面主色；「往年今日」共用同一面板）：
+
+![播放里程碑](./doc/screenshots/milestone.png)
+
 设置窗口（音乐库 + 歌词 Cookie/下载）：
 
 ![设置窗口](./doc/screenshots/settings.png)
