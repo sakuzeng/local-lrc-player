@@ -4,9 +4,17 @@
 
 ## 预览
 
-主窗口（曲目列表 + 同步歌词）：
+主窗口（曲目列表 + 同步歌词，封面主色氛围背景）：
 
 ![主窗口](./doc/screenshots/main-window.png)
+
+沉浸模式（⌘⇧F，大封面 + 放大左对齐歌词 + 底部控制行）：
+
+![沉浸模式](./doc/screenshots/immersive.png)
+
+菜单栏悬停卡片（停在菜单栏歌词上 0.3s 弹出）：
+
+![菜单栏悬停卡片](./doc/screenshots/menubar-card.png)
 
 设置窗口（音乐库 + 歌词 Cookie/下载）：
 
