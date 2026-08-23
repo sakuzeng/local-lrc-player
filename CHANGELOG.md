@@ -13,6 +13,13 @@
   界面本就全部使用语义色,主窗口/设置窗/弹窗/悬停卡片随 `NSApp.appearance` 一起变;
   菜单栏歌词位图与浅色菜单维持现状(属菜单栏体系,见 `doc/ui.md`)。
 
+### Fixed
+
+- 浅色模式下拖动进度条,预览时间气泡显示成深底黑块:建视图时把
+  `controlBackgroundColor.withAlphaComponent(0.9).cgColor` 拍平成了静态色,
+  外观切换后不再跟随。改为每次显示气泡时按 `effectiveAppearance` 重新解析
+  (`doc/ui.md` 早有记录的 CGColor 拍平坑,运行时外观切换让它必现)。
+
 ### Changed
 
 - 歌词当前行高亮从系统强调色(蓝)改为 `labelColor`(深色纯白/浅色近黑),

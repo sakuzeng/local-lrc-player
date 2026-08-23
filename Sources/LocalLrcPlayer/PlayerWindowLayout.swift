@@ -410,7 +410,6 @@ final class PlayerWindowLayout {
         seekPreviewLabel.textColor = .secondaryLabelColor
         seekPreviewLabel.alignment = .center
         seekPreviewLabel.wantsLayer = true
-        seekPreviewLabel.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.9).cgColor
         seekPreviewLabel.layer?.cornerRadius = 7
         seekPreviewLabel.layer?.cornerCurve = .continuous
         seekPreviewLabel.isHidden = true
@@ -500,6 +499,12 @@ final class PlayerWindowLayout {
     }
 
     func showSeekPreview(text: String, fraction: Double) {
+        // 背景色每次显示时按当前外观重新解析：CGColor 是拍平的静态色，
+        // 建视图时设一次会在浅/深色切换后留下反色的块。
+        seekPreviewLabel.effectiveAppearance.performAsCurrentDrawingAppearance {
+            seekPreviewLabel.layer?.backgroundColor =
+                NSColor.controlBackgroundColor.withAlphaComponent(0.9).cgColor
+        }
         seekPreviewLabel.stringValue = text
         seekPreviewLabel.sizeToFit()
 
