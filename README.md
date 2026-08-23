@@ -4,9 +4,11 @@
 
 ## 预览
 
-主窗口（曲目列表 + 同步歌词，封面主色氛围背景）：
+主窗口（曲目列表 + 同步歌词，封面主色氛围背景；外观支持跟随系统/浅色/深色）：
 
-![主窗口](./doc/screenshots/main-window.png)
+![主窗口（深色）](./doc/screenshots/main-window.png)
+
+![主窗口（浅色）](./doc/screenshots/main-window-light.png)
 
 沉浸模式（⌘⇧F，大封面 + 放大左对齐歌词 + 底部控制行）：
 
@@ -20,7 +22,7 @@
 
 ![播放里程碑](./doc/screenshots/milestone.png)
 
-设置窗口（音乐库 + 歌词 Cookie/下载）：
+设置窗口（外观切换 + 音乐库 + 歌词 Cookie/下载）：
 
 ![设置窗口](./doc/screenshots/settings.png)
 
