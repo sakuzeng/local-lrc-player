@@ -198,23 +198,31 @@ final class MenuBarNowPlayingCardView: NSView {
         artistLabel.font = .systemFont(ofSize: 11)
         artistLabel.textColor = .secondaryLabelColor
         artistLabel.lineBreakMode = .byTruncatingTail
-        lyricLabel.font = .systemFont(ofSize: 11)
-        lyricLabel.textColor = .tertiaryLabelColor
+        // 当前歌词单独成行、整卡居中：跟歌名歌手错开层级，也呼应主窗口的居中歌词排版。
+        lyricLabel.font = .systemFont(ofSize: 12)
+        lyricLabel.textColor = .labelColor
+        lyricLabel.alignment = .center
         lyricLabel.lineBreakMode = .byTruncatingTail
         for label in [titleLabel, artistLabel, lyricLabel] {
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
 
-        let textStack = NSStackView(views: [titleLabel, artistLabel, lyricLabel])
+        let textStack = NSStackView(views: [titleLabel, artistLabel])
         textStack.orientation = .vertical
         textStack.alignment = .leading
-        textStack.spacing = 1
+        textStack.spacing = 2
 
         let headerStack = NSStackView(views: [artView, textStack])
         headerStack.orientation = .horizontal
         headerStack.alignment = .centerY
         headerStack.spacing = 10
-        headerStack.translatesAutoresizingMaskIntoConstraints = false
+
+        // 用 stack 承载，歌词为空时自动收起不留空行。
+        let topStack = NSStackView(views: [headerStack, lyricLabel])
+        topStack.orientation = .vertical
+        topStack.alignment = .leading
+        topStack.spacing = 9
+        topStack.translatesAutoresizingMaskIntoConstraints = false
 
         progressSlider.minValue = 0
         progressSlider.maxValue = 1
@@ -273,7 +281,7 @@ final class MenuBarNowPlayingCardView: NSView {
         controlsRow.addSubview(volumeIcon)
         controlsRow.addSubview(volumeSlider)
 
-        addSubview(headerStack)
+        addSubview(topStack)
         addSubview(progressSlider)
         addSubview(elapsedLabel)
         addSubview(durationLabel)
@@ -283,15 +291,17 @@ final class MenuBarNowPlayingCardView: NSView {
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: 320),
 
-            headerStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
-            headerStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
-            headerStack.topAnchor.constraint(equalTo: topAnchor, constant: 13),
+            topStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
+            topStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
+            topStack.topAnchor.constraint(equalTo: topAnchor, constant: 13),
+            headerStack.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            lyricLabel.widthAnchor.constraint(equalTo: topStack.widthAnchor),
             artView.widthAnchor.constraint(equalToConstant: 48),
             artView.heightAnchor.constraint(equalToConstant: 48),
 
             progressSlider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             progressSlider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
-            progressSlider.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 11),
+            progressSlider.topAnchor.constraint(equalTo: topStack.bottomAnchor, constant: 11),
 
             elapsedLabel.leadingAnchor.constraint(equalTo: progressSlider.leadingAnchor, constant: 1),
             elapsedLabel.topAnchor.constraint(equalTo: progressSlider.bottomAnchor, constant: 1),
