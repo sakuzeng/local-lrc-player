@@ -348,8 +348,9 @@ private final class TrackTableCellView: NSView {
         subtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
 
         if isPlaying {
+            // 标题不用强调色：正在播放靠行底色 + semibold 识别，蓝字压在蓝底上反而闷。
             titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
-            titleLabel.textColor = .controlAccentColor
+            titleLabel.textColor = .labelColor
             subtitleLabel.textColor = .secondaryLabelColor
             return
         }

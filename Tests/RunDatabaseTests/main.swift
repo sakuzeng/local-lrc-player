@@ -277,6 +277,7 @@ final class AppSettingsRepositoryTests {
         try runIsolated { try self.testDefaultSettingsAfterV3Migration() }
         try runIsolated { try self.testUpdateMenuBarLyricsPersists() }
         try runIsolated { try self.testMilestoneAlertsDefaultOnAndPersists() }
+        try runIsolated { try self.testAppearanceDefaultSystemAndPersists() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -330,6 +331,19 @@ final class AppSettingsRepositoryTests {
         try assertEqual(try repository.settings().milestoneAlertsEnabled, false, "改菜单栏设置不应重置里程碑开关")
         try repository.updateMilestoneAlerts(enabled: true)
         try assertEqual(try repository.settings().menuBarLyricsShowIcon, false, "改里程碑开关不应重置菜单栏设置")
+    }
+
+    private func testAppearanceDefaultSystemAndPersists() throws {
+        try assertEqual(try repository.settings().appearance, AppAppearance.system, "v7 迁移默认跟随系统")
+
+        try repository.updateAppearance(.dark)
+        try assertEqual(try repository.settings().appearance, AppAppearance.dark)
+
+        // 与同行其他设置互不覆盖。
+        try repository.updateMenuBarLyrics(enabled: false)
+        try assertEqual(try repository.settings().appearance, AppAppearance.dark, "改菜单栏设置不应重置外观")
+        try repository.updateAppearance(.light)
+        try assertEqual(try repository.settings().menuBarLyricsEnabled, false, "改外观不应重置菜单栏设置")
     }
 }
 

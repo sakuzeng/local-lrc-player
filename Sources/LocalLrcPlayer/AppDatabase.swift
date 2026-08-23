@@ -21,7 +21,7 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
-    static let currentSchemaVersion = 6
+    static let currentSchemaVersion = 7
 
     static let shared: AppDatabase = {
         do {
@@ -122,6 +122,9 @@ final class AppDatabase {
             if try currentSchemaVersion(db) < 6 {
                 try Self.applyMigrationV6(db, database: self)
             }
+            if try currentSchemaVersion(db) < 7 {
+                try Self.applyMigrationV7(db, database: self)
+            }
 
             let version = try currentSchemaVersion(db)
             if version < Self.currentSchemaVersion {
@@ -179,6 +182,14 @@ final class AppDatabase {
         for sql in statements {
             try database.exec(db, sql: sql)
         }
+    }
+
+    /// 外观：跟随系统 / 浅色 / 深色（`system` / `light` / `dark`）。
+    private static func applyMigrationV7(_ db: OpaquePointer, database: AppDatabase) throws {
+        try database.exec(
+            db,
+            sql: "ALTER TABLE app_settings ADD COLUMN appearance TEXT NOT NULL DEFAULT 'system';"
+        )
     }
 
     private func currentSchemaVersion(_ db: OpaquePointer) throws -> Int {

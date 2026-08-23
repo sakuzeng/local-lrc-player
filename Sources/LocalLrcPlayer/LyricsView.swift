@@ -383,10 +383,12 @@ final class LyricsView: NSScrollView {
     private func targetAppearance(forLineIndex index: Int, activeIndex: Int) -> LyricLineAppearance {
         let distance = abs(index - activeIndex)
         if distance == 0 {
+            // 当前行不用强调色：大字块的高饱和蓝压在氛围背景上很突兀，
+            // 学 Apple Music 用 labelColor（深色纯白/浅色近黑），靠字号字重区分。
             return LyricLineAppearance(
                 fontSize: profile.activeFontSize,
                 weight: .bold,
-                color: .controlAccentColor
+                color: .labelColor
             )
         }
 

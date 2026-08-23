@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘�
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 6`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量 + v5 播放里程碑 + v6 往年今日） |
+| Schema 版本 | `PRAGMA user_version = 7`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量 + v5 播放里程碑 + v6 往年今日 + v7 外观） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -40,6 +40,7 @@ erDiagram
         INTEGER menu_bar_lyrics_enabled
         REAL menu_bar_lyrics_max_width
         INTEGER menu_bar_lyrics_show_icon
+        TEXT appearance
     }
 
     libraries {
@@ -198,6 +199,7 @@ erDiagram
 | `milestone_alerts_enabled` | INTEGER | 播放次数达到里程碑时是否弹窗（0/1，默认 1；v5） |
 | `memory_alerts_enabled` | INTEGER | 启动时是否回顾「往年今日」（0/1，默认 1；v6） |
 | `last_memory_shown_on` | TEXT | 「往年今日」上次弹出的日期 `YYYY-MM-DD`（本地时区，NULL 表示没弹过；v6） |
+| `appearance` | TEXT | App 外观：`system` 跟随系统 / `light` 浅色 / `dark` 深色（默认 `system`；v7） |
 
 ---
 
@@ -310,7 +312,7 @@ SettingsWindowController → LibraryRepository.deleteLibrary(id)
 ```
 
 覆盖：内容 hash、跨库去重、多库累积、播放状态、`library_tracks` 删除后保留副本、`app_settings` 默认值与更新、整库移除后共有曲目保留与 `player_state` 清理、音量默认值/持久化/越界钳制、里程碑开关默认值与互不覆盖、有效播放计数与首播时间口径、
-往年今日的按日聚合/月份回推的短月边界/偏移量优先级。
+往年今日的按日聚合/月份回推的短月边界/偏移量优先级、外观默认跟随系统与互不覆盖。
 
 ---
 

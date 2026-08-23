@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 先应用外观再建窗口，避免启动瞬间闪一下系统默认外观。
+        let appearance = ((try? AppSettingsRepository().settings()) ?? .defaults).appearance
+        appearance.applyToApp()
+
         let controller = PlayerWindowController()
         playerWindowController = controller
         let menuBarLyrics = MenuBarLyricsController(playerWindowController: controller)

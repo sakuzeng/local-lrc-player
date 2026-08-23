@@ -10,6 +10,7 @@ struct AppSettings: Equatable {
     let memoryAlertsEnabled: Bool
     /// 「往年今日」上次弹出的日期（YYYY-MM-DD，本地时区）；每天最多弹一次。
     let lastMemoryShownOn: String?
+    let appearance: AppAppearance
 
     static let defaults = AppSettings(
         menuBarLyricsEnabled: true,
@@ -17,8 +18,37 @@ struct AppSettings: Equatable {
         menuBarLyricsShowIcon: true,
         milestoneAlertsEnabled: true,
         memoryAlertsEnabled: true,
-        lastMemoryShownOn: nil
+        lastMemoryShownOn: nil,
+        appearance: .system
     )
+}
+
+/// App 外观；`system` 跟随系统深浅色。
+enum AppAppearance: String, CaseIterable {
+    case system
+    case light
+    case dark
+
+    var title: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light: return "浅色"
+        case .dark: return "深色"
+        }
+    }
+
+    /// 跟随系统时返回 nil（`NSApp.appearance = nil` 即恢复跟随）。
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+
+    func applyToApp() {
+        NSApp.appearance = nsAppearance
+    }
 }
 
 enum MenuBarLyricsMaxWidthOption: CGFloat, CaseIterable {
@@ -57,7 +87,7 @@ final class AppSettingsRepository {
         try database.read { db in
             let sql = """
             SELECT menu_bar_lyrics_enabled, menu_bar_lyrics_max_width, menu_bar_lyrics_show_icon,
-                   milestone_alerts_enabled, memory_alerts_enabled, last_memory_shown_on
+                   milestone_alerts_enabled, memory_alerts_enabled, last_memory_shown_on, appearance
             FROM app_settings
             WHERE id = 1
             LIMIT 1;
@@ -75,7 +105,10 @@ final class AppSettingsRepository {
                 memoryAlertsEnabled: sqlite3_column_int(statement, 4) != 0,
                 lastMemoryShownOn: sqlite3_column_type(statement, 5) == SQLITE_NULL
                     ? nil
-                    : String(cString: sqlite3_column_text(statement, 5))
+                    : String(cString: sqlite3_column_text(statement, 5)),
+                appearance: sqlite3_column_type(statement, 6) == SQLITE_NULL
+                    ? .system
+                    : AppAppearance(rawValue: String(cString: sqlite3_column_text(statement, 6))) ?? .system
             )
         }
     }
@@ -92,7 +125,8 @@ final class AppSettingsRepository {
             menuBarLyricsShowIcon: showIcon ?? current.menuBarLyricsShowIcon,
             milestoneAlertsEnabled: current.milestoneAlertsEnabled,
             memoryAlertsEnabled: current.memoryAlertsEnabled,
-            lastMemoryShownOn: current.lastMemoryShownOn
+            lastMemoryShownOn: current.lastMemoryShownOn,
+            appearance: current.appearance
         ))
     }
 
@@ -104,7 +138,8 @@ final class AppSettingsRepository {
             menuBarLyricsShowIcon: current.menuBarLyricsShowIcon,
             milestoneAlertsEnabled: enabled,
             memoryAlertsEnabled: current.memoryAlertsEnabled,
-            lastMemoryShownOn: current.lastMemoryShownOn
+            lastMemoryShownOn: current.lastMemoryShownOn,
+            appearance: current.appearance
         ))
     }
 
@@ -116,7 +151,8 @@ final class AppSettingsRepository {
             menuBarLyricsShowIcon: current.menuBarLyricsShowIcon,
             milestoneAlertsEnabled: current.milestoneAlertsEnabled,
             memoryAlertsEnabled: enabled,
-            lastMemoryShownOn: current.lastMemoryShownOn
+            lastMemoryShownOn: current.lastMemoryShownOn,
+            appearance: current.appearance
         ))
     }
 
@@ -128,7 +164,21 @@ final class AppSettingsRepository {
             menuBarLyricsShowIcon: current.menuBarLyricsShowIcon,
             milestoneAlertsEnabled: current.milestoneAlertsEnabled,
             memoryAlertsEnabled: current.memoryAlertsEnabled,
-            lastMemoryShownOn: day
+            lastMemoryShownOn: day,
+            appearance: current.appearance
+        ))
+    }
+
+    func updateAppearance(_ appearance: AppAppearance) throws {
+        let current = try settings()
+        try write(AppSettings(
+            menuBarLyricsEnabled: current.menuBarLyricsEnabled,
+            menuBarLyricsMaxWidth: current.menuBarLyricsMaxWidth,
+            menuBarLyricsShowIcon: current.menuBarLyricsShowIcon,
+            milestoneAlertsEnabled: current.milestoneAlertsEnabled,
+            memoryAlertsEnabled: current.memoryAlertsEnabled,
+            lastMemoryShownOn: current.lastMemoryShownOn,
+            appearance: appearance
         ))
     }
 
@@ -141,7 +191,8 @@ final class AppSettingsRepository {
                 menu_bar_lyrics_show_icon = ?,
                 milestone_alerts_enabled = ?,
                 memory_alerts_enabled = ?,
-                last_memory_shown_on = ?
+                last_memory_shown_on = ?,
+                appearance = ?
             WHERE id = 1;
             """
             let statement = try database.prepare(db, sql: sql)
@@ -156,6 +207,7 @@ final class AppSettingsRepository {
             } else {
                 sqlite3_bind_null(statement, 6)
             }
+            sqlite3_bind_text(statement, 7, next.appearance.rawValue, -1, Self.sqliteTransient)
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 throw AppDatabaseError.stepFailed(database.errorMessage(db))
             }

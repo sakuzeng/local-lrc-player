@@ -33,6 +33,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         target: nil,
         action: nil
     )
+    private let appearancePopup = NSPopUpButton(frame: .zero, pullsDown: false)
 
     private var contentScrollView: NSScrollView?
     private var lyricDownloadBusy = false
@@ -67,6 +68,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         reloadLibraries()
         refreshMenuBarControls()
         refreshMilestoneControls()
+        refreshAppearanceControls()
         updateCookieButtonTitle()
     }
 
@@ -83,6 +85,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         reloadLibraries()
         refreshMenuBarControls()
         refreshMilestoneControls()
+        refreshAppearanceControls()
         resetLyricDownloadBusyIfIdle()
         scrollContentToTop()
     }
@@ -192,6 +195,10 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
 
         menuBarWidthPopup.addItems(withTitles: MenuBarLyricsMaxWidthOption.allCases.map { "\($0.title) pt" })
 
+        appearancePopup.addItems(withTitles: AppAppearance.allCases.map(\.title))
+        appearancePopup.controlSize = .regular
+        appearancePopup.setContentHuggingPriority(.defaultLow, for: .horizontal)
+
         let libraryColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("path"))
         libraryColumn.title = "文件夹路径"
         libraryColumn.resizingMask = .autoresizingMask
@@ -265,7 +272,14 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             panel: makeGroupedPanel(rows: [milestoneAlertsButton, memoryAlertsButton])
         )
 
-        let root = NSStackView(views: [librarySection, lyricsSection, menuBarSection, milestoneSection])
+        let appearanceSection = makeSection(
+            title: "外观",
+            panel: makeGroupedPanel(rows: [
+                makeFormRow(label: "外观", control: appearancePopup)
+            ])
+        )
+
+        let root = NSStackView(views: [appearanceSection, librarySection, lyricsSection, menuBarSection, milestoneSection])
         root.orientation = .vertical
         root.alignment = .leading
         root.spacing = 24
@@ -295,6 +309,7 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
             root.topAnchor.constraint(equalTo: documentView.topAnchor),
             root.bottomAnchor.constraint(equalTo: documentView.bottomAnchor),
             root.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            appearanceSection.widthAnchor.constraint(equalTo: root.widthAnchor),
             librarySection.widthAnchor.constraint(equalTo: root.widthAnchor),
             lyricsSection.widthAnchor.constraint(equalTo: root.widthAnchor),
             menuBarSection.widthAnchor.constraint(equalTo: root.widthAnchor)
@@ -462,6 +477,8 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         milestoneAlertsButton.action = #selector(toggleMilestoneAlerts)
         memoryAlertsButton.target = self
         memoryAlertsButton.action = #selector(toggleMemoryAlerts)
+        appearancePopup.target = self
+        appearancePopup.action = #selector(appearanceChanged)
     }
 
     private func updateLibraryButtons() {
@@ -588,6 +605,28 @@ final class SettingsWindowController: NSWindowController, NSTableViewDataSource,
         let settings = (try? appSettingsRepository.settings()) ?? .defaults
         milestoneAlertsButton.state = settings.milestoneAlertsEnabled ? .on : .off
         memoryAlertsButton.state = settings.memoryAlertsEnabled ? .on : .off
+    }
+
+    private func refreshAppearanceControls() {
+        let settings = (try? appSettingsRepository.settings()) ?? .defaults
+        if let index = AppAppearance.allCases.firstIndex(of: settings.appearance) {
+            appearancePopup.selectItem(at: index)
+        }
+    }
+
+    @objc private func appearanceChanged() {
+        let index = appearancePopup.indexOfSelectedItem
+        guard AppAppearance.allCases.indices.contains(index) else {
+            return
+        }
+        let appearance = AppAppearance.allCases[index]
+        do {
+            try appSettingsRepository.updateAppearance(appearance)
+            appearance.applyToApp()
+        } catch {
+            presentError(error.localizedDescription)
+            refreshAppearanceControls()
+        }
     }
 
     @objc private func toggleMenuBarShowIcon(_ sender: NSButton) {
