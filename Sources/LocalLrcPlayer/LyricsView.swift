@@ -455,17 +455,24 @@ final class LyricsView: NSScrollView {
             let progress = self.easeInOut(CGFloat(raw))
             let paragraphStyle = self.makeParagraphStyle()
 
-            for index in self.lineRanges.indices {
-                let appearance = fromAppearances[index].lerped(to: toAppearances[index], progress: progress)
-                self.textView.textStorage?.setAttributes(
-                    self.attributes(for: appearance, paragraphStyle: paragraphStyle),
-                    range: self.lineRanges[index]
-                )
+            // lerped 里的 blended 会把动态语义色拍平成静态色，Timer 回调的默认
+            // 外观是浅色，必须显式在本视图的外观下解析，否则深色下会写进黑字。
+            self.effectiveAppearance.performAsCurrentDrawingAppearance {
+                for index in self.lineRanges.indices {
+                    let appearance = fromAppearances[index].lerped(to: toAppearances[index], progress: progress)
+                    self.textView.textStorage?.setAttributes(
+                        self.attributes(for: appearance, paragraphStyle: paragraphStyle),
+                        range: self.lineRanges[index]
+                    )
+                }
             }
 
             if raw >= 1 {
                 timer.invalidate()
                 self.styleAnimationTimer = nil
+                // 动画帧全是拍平的静态色，收尾用动态色重写一遍，
+                // 让静止状态继续跟随之后的外观切换。
+                self.applyLineStyles(activeIndex: newIndex)
             }
         }
     }
