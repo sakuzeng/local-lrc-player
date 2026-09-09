@@ -393,12 +393,25 @@ final class MenuBarNowPlayingCardView: NSView {
 
 /// 卡片的显隐状态机：悬停菜单栏歌词 0.3s 弹出，指针离开 button 与卡片 0.25s 后收起。
 /// 宽限期是为了让指针能从 button 穿过几像素空档移进卡片。
+///
+/// 卡片是无箭头的 borderless 面板而不是 NSPopover：状态项宽度随歌词变化，popover 的箭头
+/// 只能指向一个点，要么跟着中心漂、要么偏在一角；照系统控制中心下拉的做法，面板右缘
+/// 对齐状态项右缘挂在菜单栏下方。NSPopover 没有公开 API 能去掉箭头。
 final class MenuBarNowPlayingCardController: NSResponder {
     private static let openDelay: TimeInterval = 0.3
     private static let closeGrace: TimeInterval = 0.25
+    /// 面板顶边与菜单栏底边的留白。
+    private static let menuBarGap: CGFloat = 6
+    private static let screenMargin: CGFloat = 8
+    private static let cornerRadius: CGFloat = 14
 
     private weak var playerWindowController: PlayerWindowController?
-    private let popover = NSPopover()
+    private let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
+        styleMask: [.borderless, .nonactivatingPanel],
+        backing: .buffered,
+        defer: false
+    )
     private let cardView = MenuBarNowPlayingCardView()
 
     private weak var attachedButton: NSStatusBarButton?
@@ -411,18 +424,13 @@ final class MenuBarNowPlayingCardController: NSResponder {
     private var isMenuOpen = false
 
     var isShown: Bool {
-        popover.isShown
+        panel.isVisible
     }
 
     init(playerWindowController: PlayerWindowController?) {
         self.playerWindowController = playerWindowController
         super.init()
-
-        let contentController = NSViewController()
-        contentController.view = cardView
-        popover.contentViewController = contentController
-        // hover 语义下显隐完全由下面的状态机决定，不要让 AppKit 自作主张收起。
-        popover.behavior = .applicationDefined
+        configurePanel()
 
         cardView.onEnter = { [weak self] in
             self?.insideCard = true
@@ -459,6 +467,38 @@ final class MenuBarNowPlayingCardController: NSResponder {
     deinit {
         openTimer?.invalidate()
         closeTimer?.invalidate()
+    }
+
+    private func configurePanel() {
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        // 与状态项弹出的 popover 同层，压在其它 App 窗口之上；全屏 Space 里菜单栏滑出时也能显示。
+        panel.level = .popUpMenu
+        panel.collectionBehavior = [.canJoinAllSpaces, .transient, .ignoresCycle, .fullScreenAuxiliary]
+        // 显隐完全由悬停状态机决定：NSPanel 默认 App 失活就自动隐藏，这里关掉。
+        panel.hidesOnDeactivate = false
+        panel.isReleasedWhenClosed = false
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.animationBehavior = .utilityWindow
+
+        // 毛玻璃底 + 圆角遮罩；窗口透明，阴影跟着圆角走。
+        let root = NSVisualEffectView()
+        root.material = .popover
+        root.blendingMode = .behindWindow
+        root.state = .active
+        root.wantsLayer = true
+        root.layer?.cornerRadius = Self.cornerRadius
+        root.layer?.cornerCurve = .continuous
+        root.layer?.masksToBounds = true
+        root.addSubview(cardView)
+        NSLayoutConstraint.activate([
+            cardView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            cardView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            cardView.topAnchor.constraint(equalTo: root.topAnchor),
+            cardView.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+        ])
+        panel.contentView = root
     }
 
     /// statusItem 会被反复销毁重建，所以每次配置成功都要调；按 button 身份幂等。
@@ -499,18 +539,23 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     func refreshIfVisible() {
-        guard popover.isShown else {
+        guard panel.isVisible else {
             return
         }
         cardView.apply(playerWindowController?.currentNowPlayingSnapshot())
+        // 歌词换行会改 item.length（右缘不动、左缘伸缩），歌词行显隐会改卡片高度，
+        // 借这条刷新链把面板重新贴回右缘；frame 没变就不动。
+        if let button = attachedButton {
+            layoutPanel(under: button)
+        }
         verifyPointerStillInside()
     }
 
     func closeImmediately() {
         cancelOpenTimer()
         cancelCloseTimer()
-        if popover.isShown {
-            popover.performClose(nil)
+        if panel.isVisible {
+            panel.orderOut(nil)
         }
     }
 
@@ -527,7 +572,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func scheduleOpen() {
-        guard !isMenuOpen, !popover.isShown, openTimer == nil else {
+        guard !isMenuOpen, !panel.isVisible, openTimer == nil else {
             return
         }
         openTimer = Timer.scheduledTimer(withTimeInterval: Self.openDelay, repeats: false) { [weak self] _ in
@@ -540,7 +585,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func scheduleClose() {
-        guard popover.isShown, closeTimer == nil else {
+        guard panel.isVisible, closeTimer == nil else {
             return
         }
         closeTimer = Timer.scheduledTimer(withTimeInterval: Self.closeGrace, repeats: false) { [weak self] _ in
@@ -569,7 +614,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func showCard() {
-        guard !isMenuOpen, insideButton, !popover.isShown else {
+        guard !isMenuOpen, insideButton, !panel.isVisible else {
             return
         }
         guard let button = attachedButton, button.window != nil else {
@@ -578,19 +623,47 @@ final class MenuBarNowPlayingCardController: NSResponder {
 
         cardView.apply(playerWindowController?.currentNowPlayingSnapshot())
         offscreenTicks = 0
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        layoutPanel(under: button)
+        // App 多半在后台，普通 orderFront 可能不生效。
+        panel.orderFrontRegardless()
+    }
+
+    /// 面板右缘对齐状态项右缘、顶边贴菜单栏下方。菜单栏状态项从右往左排，
+    /// item.length 随歌词变化时右缘不动、左缘伸缩，所以对齐右缘卡片就不会漂。
+    /// 右侧超出屏幕时整体左移。
+    private func layoutPanel(under button: NSStatusBarButton) {
+        guard let buttonWindow = button.window, let content = panel.contentView else {
+            return
+        }
+        let buttonRect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
+        let size = content.fittingSize
+        var origin = NSPoint(
+            x: buttonRect.maxX - size.width,
+            y: buttonRect.minY - Self.menuBarGap - size.height
+        )
+        if let screen = buttonWindow.screen ?? NSScreen.main {
+            let limit = screen.visibleFrame
+            origin.x = min(origin.x, limit.maxX - size.width - Self.screenMargin)
+            origin.x = max(origin.x, limit.minX + Self.screenMargin)
+        }
+        let frame = NSRect(origin: origin, size: size)
+        guard panel.frame != frame else {
+            return
+        }
+        panel.setFrame(frame, display: true)
+        panel.invalidateShadow()
     }
 
     /// tracking 事件偶尔会漏（菜单栏位图 30fps 重绘、跨屏移动），
     /// 借 0.2s 刷新链核对指针是否真的还在 button 或卡片上，连续两次不在就强制收起。
+    /// 两边各外扩 4pt，合起来盖住 button 与面板之间 6pt 的留白。
     private func verifyPointerStillInside() {
         let pointer = NSEvent.mouseLocation
         var inside = false
         if let frame = attachedButton?.window?.frame, frame.insetBy(dx: -4, dy: -4).contains(pointer) {
             inside = true
         }
-        if let frame = popover.contentViewController?.view.window?.frame,
-           frame.insetBy(dx: -4, dy: -4).contains(pointer) {
+        if panel.isVisible, panel.frame.insetBy(dx: -4, dy: -4).contains(pointer) {
             inside = true
         }
 

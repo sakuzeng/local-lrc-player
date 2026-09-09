@@ -164,7 +164,7 @@
 
 ### 正在播放卡片（`MenuBarNowPlayingCard.swift`）
 
-320pt 宽 `NSPopover`，`behavior = .applicationDefined`（显隐完全由悬停状态机决定，不让 AppKit 自作主张收起）。
+320pt 宽的无箭头面板（borderless + nonactivating `NSPanel`，`.popover` 材质毛玻璃底 14pt 圆角，`level = .popUpMenu`，`hidesOnDeactivate = false`），显隐完全由悬停状态机决定。位置照系统控制中心下拉：顶边距菜单栏底 6pt，右缘对齐状态项右缘，右侧超出屏幕时整体左移。
 内容自上而下：48pt 圆角封面 + 歌名/歌手/当前歌词三行 → 进度条 + 两端时间 → 控制行。
 控制行的传输键用 `centerX` 约束真正居中，模式键在最左、音量在最右 —— 两侧宽度不等，靠 stack 塞 spacer 撑不居中。
 
@@ -177,6 +177,7 @@
 - 拖动进度/音量期间不回写滑杆值（`SeekSlider.isTrackingMouse`），否则会被 0.2s 刷新拽回播放头。
 - status button 不设 `toolTip`：系统气泡会叠在卡片上方重复同一句歌词，改由卡片第三行显示完整当前行。
 - tracking area 挂在 `statusItem.button` 上（owner 回调，不加 subview —— `enable()` 有「button 有子视图就重建」的判断）；`item.length` 随歌词滚动频繁变化，用 `.inVisibleRect` 让区域自己跟着 bounds 走；statusItem 重建时按 button 身份幂等重挂。
+- 不用 `NSPopover`：状态项从右往左排，`item.length` 随歌词变化时右缘不动、左缘伸缩，箭头指向 button 中心会跟着漂，而 `NSPopover` 没有公开 API 去掉箭头。面板对齐右缘就没有这个问题；`refreshIfVisible` 里重算位置（`layoutPanel`），弹出期间歌词换行或歌词行显隐也贴着右缘。
 - 已知限制：多显示器下只有当前聚焦那块屏的菜单栏悬停会弹卡片。`NSStatusItem` 只有一个 button window，另一块屏上的是系统镜像，收不到 tracking 事件。点击菜单在两块屏都可用。
 
 音乐库若在「下载」等受保护目录，见 `LibraryBookmarkStore`（选择文件夹时写入 Security-Scoped Bookmark）。
