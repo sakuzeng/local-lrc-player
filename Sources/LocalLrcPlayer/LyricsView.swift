@@ -196,7 +196,10 @@ final class LyricsView: NSScrollView {
 
     private func setup() {
         textView.isEditable = false
-        textView.isSelectable = true
+        // 歌词不可选：点行是 seek，不是选文字。可选的话拖一下就留一块选区底色，
+        // 失焦时 AppKit 只把它画成非强调色、不会清掉，点别处也去不了。
+        // NSClickGestureRecognizer 不依赖可选性，点行 seek 照常。
+        textView.isSelectable = false
         textView.drawsBackground = false
         textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: profile.horizontalInset, height: 32)

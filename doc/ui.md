@@ -29,6 +29,7 @@
 | 列表导航 `listNavigationStack` | 与列表强相关的操作（定位正在播放、进入沉浸模式），便于横向扩展 |
 | 列表底栏 `transportBar` | 传输控制 pill + 播放模式（在 split 左列内） |
 | 歌词顶栏 `nowPlayingBar` | 正在播放信息块（36pt 圆角封面 + 歌名/歌手，可截断，无曲目时隐藏），水平居中呼应歌词居中排版、两侧至少 28pt（在 split 右列内）。封面：内嵌图 → `ArtworkCache`/下载兜底 → 占位音符 |
+| 歌词区 `LyricsView` | `NSTextView` 不可编辑也不可选（`isSelectable = false`）：点行是 seek，走 `NSClickGestureRecognizer` 按行高命中；可选的话拖一下就留一块选区底色，失焦时 AppKit 不会清掉 |
 | 歌词底栏 `progressBar` | 进度条 + 时间 + 音量喇叭按钮（点击弹 transient popover 竖向滑杆），左右 28pt 与歌词 `textContainerInset` 对齐（在 split 右列内） |
 
 播放底栏放在各自 split 子视图内，不要在 split 外再用 `widthAnchor` 绑定列宽，否则易触发 Auto Layout 冲突导致启动崩溃。
