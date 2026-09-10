@@ -211,14 +211,18 @@ final class MenuBarNowPlayingCardView: NSView {
         textStack.orientation = .vertical
         textStack.alignment = .leading
         textStack.spacing = 2
+        textStack.translatesAutoresizingMaskIntoConstraints = false
 
-        let headerStack = NSStackView(views: [artView, textStack])
-        headerStack.orientation = .horizontal
-        headerStack.alignment = .centerY
-        headerStack.spacing = 10
+        // 封面 + 文字块用显式约束对齐，不用横向 NSStackView 的 centerY：
+        // 歌手行显隐切换改变文字块高度后，stack 的 centerY 对齐不会重新居中，
+        // 文字块会贴到封面顶端（无歌手时歌名甚至顶出卡片）。
+        let header = NSView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.addSubview(artView)
+        header.addSubview(textStack)
 
         // 用 stack 承载，歌词为空时自动收起不留空行。
-        let topStack = NSStackView(views: [headerStack, lyricLabel])
+        let topStack = NSStackView(views: [header, lyricLabel])
         topStack.orientation = .vertical
         topStack.alignment = .leading
         topStack.spacing = 9
@@ -294,10 +298,18 @@ final class MenuBarNowPlayingCardView: NSView {
             topStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             topStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
             topStack.topAnchor.constraint(equalTo: topAnchor, constant: 13),
-            headerStack.widthAnchor.constraint(equalTo: topStack.widthAnchor),
+            header.widthAnchor.constraint(equalTo: topStack.widthAnchor),
             lyricLabel.widthAnchor.constraint(equalTo: topStack.widthAnchor),
             artView.widthAnchor.constraint(equalToConstant: 48),
             artView.heightAnchor.constraint(equalToConstant: 48),
+            artView.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            artView.topAnchor.constraint(equalTo: header.topAnchor),
+            artView.bottomAnchor.constraint(equalTo: header.bottomAnchor),
+            textStack.leadingAnchor.constraint(equalTo: artView.trailingAnchor, constant: 10),
+            textStack.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            textStack.centerYAnchor.constraint(equalTo: artView.centerYAnchor),
+            textStack.topAnchor.constraint(greaterThanOrEqualTo: header.topAnchor),
+            textStack.bottomAnchor.constraint(lessThanOrEqualTo: header.bottomAnchor),
 
             progressSlider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: inset),
             progressSlider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -inset),
