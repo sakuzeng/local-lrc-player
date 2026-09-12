@@ -61,6 +61,7 @@ extension PlayerWindowController {
         layout.statusLabel.stringValue = "正在播放：\(track.displayName)"
         layout.setPlayButtonShowsPause(true)
         updateControlState()
+        publishNowPlayingState(isPlaying: true)
 
         // 上一首若已攒够里程碑，切歌就是弹窗时机。
         flushPendingMilestone()
@@ -110,6 +111,8 @@ extension PlayerWindowController {
         let artist = track.artist
         let audioURL = track.audioURL
         nowPlayingArtworkTrackURL = audioURL
+        // 内嵌封面是异步读的；先发无封面信息系统卡片会闪一下 App 图标，给封面留一小段宽限。
+        nowPlayingArtworkGraceUntil = Date().addingTimeInterval(0.4)
         applyNowPlaying(title: title, artist: artist, artwork: nil)
 
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -159,6 +162,7 @@ extension PlayerWindowController {
         nowPlayingArtist = artist
         nowPlayingArtwork = artwork
         layout.updateNowPlaying(title: title, artist: artist, artwork: artwork)
+        publishNowPlayingState()
     }
 
     func currentNowPlayingSnapshot() -> NowPlayingSnapshot? {
@@ -327,15 +331,38 @@ extension PlayerWindowController {
         }
 
         if playbackController.isPlaying {
-            playbackController.pause()
-            layout.setPlayButtonShowsPause(false)
-            layout.statusLabel.stringValue = "已暂停"
-            saveCurrentPlaybackState()
-            syncMenuBarLyrics()
-        } else if playbackController.hasLoadedItem {
+            pauseCurrentTrack()
+        } else {
+            resumeCurrentTrack()
+        }
+    }
+
+    /// 暂停当前曲目；空格与媒体键共用。
+    func pauseCurrentTrack() {
+        guard playbackController.isPlaying else {
+            return
+        }
+        playbackController.pause()
+        layout.setPlayButtonShowsPause(false)
+        layout.statusLabel.stringValue = "已暂停"
+        saveCurrentPlaybackState()
+        syncMenuBarLyrics()
+        publishNowPlayingState()
+    }
+
+    /// 继续当前曲目，没加载过就从记住的位置开始；没有当前曲目时退回 togglePlayback 的选中行逻辑。
+    /// 媒体键走这里而不是 togglePlayback：远程「播放」不该因为列表里选中了另一行就跳歌。
+    func resumeCurrentTrack() {
+        guard let playing = currentTrackIndex ?? trackListDataSource.indexOfPlayingTrack(),
+              tracks.indices.contains(playing) else {
+            togglePlayback()
+            return
+        }
+        if playbackController.hasLoadedItem {
             playbackController.resume()
             layout.setPlayButtonShowsPause(true)
             layout.statusLabel.stringValue = "正在播放：\(tracks[playing].displayName)"
+            publishNowPlayingState(isPlaying: true)
         } else {
             playTrack(at: playing, startFromSavedPosition: true)
         }
@@ -434,6 +461,7 @@ extension PlayerWindowController {
         wasPlayingBeforeSliderTracking = playbackController.isPlaying
         if wasPlayingBeforeSliderTracking {
             playbackController.pause()
+            publishNowPlayingState()
         }
     }
 
@@ -522,6 +550,7 @@ extension PlayerWindowController {
             }
             layout.setPlayButtonShowsPause(true)
         }
+        publishNowPlayingState(isPlaying: resumeAfterSeek ? true : nil)
     }
 
     /// 点击歌词行跳到该行时间：已加载就 seek，未加载则记为恢复位置供下次播放。
@@ -560,6 +589,7 @@ extension PlayerWindowController {
         let current = playbackController.currentTime() ?? 0
         let duration = playbackController.duration() ?? 0
         applyPlaybackDisplayTime(current, duration: duration, forceScroll: true)
+        publishNowPlayingState()
     }
 
     private func applyPlaybackDisplayTime(
@@ -593,6 +623,7 @@ extension PlayerWindowController {
         guard !isSeekingWithSlider else {
             return
         }
+        reconcileNowPlayingState()
 
         if let duration = playbackController.duration(),
            duration.isFinite,

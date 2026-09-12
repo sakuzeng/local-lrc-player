@@ -57,7 +57,8 @@ open build/LocalLrcPlayer.app
 
 播放。 `PlaybackController` 封装 `AVPlayer`;`PlaybackAssetResolver` 处理
 FLAC→ALAC 的转码缓存路径;`SeekSlider` 是自定义进度条,带「先预览、松手再 seek」的行为;
-`PlaybackMode` 是顺序/单曲循环/随机的枚举(持久化)。
+`PlaybackMode` 是顺序/单曲循环/随机的枚举(持久化)。`NowPlayingCenter` 把播放态喂给系统
+「正在播放」(MediaPlayer 框架)并把媒体键/控制中心的远程指令回调给 `PlayerWindowController_NowPlaying`。
 
 歌词下载(两个来源)。 `NetEaseLyricClient` 和 `QQMusicLyricClient` 分别请求各自的
 Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Keychain)。

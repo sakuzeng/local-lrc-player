@@ -2,6 +2,21 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
+## 2026-09-12
+
+### Added
+
+- 系统「正在播放」集成:键盘媒体键(F7/F8/F9)、AirPods 捏合、控制中心与菜单栏的正在播放卡片
+  都能控制本 App(播放/暂停、上一首/下一首、拖进度),卡片显示歌名/歌手/封面/进度。
+  新增 `NowPlayingCenter` 封装 `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`,
+  `PlayerWindowController_NowPlaying` 负责接线:切歌、播放/暂停、seek 完成时全量重发,
+  0.2s tick 上只在播放态/时长/曲目信息变化或进度外推漂移超过 1.5s 时才重发。
+  远程「播放」只继续当前曲目,不会像空格那样跳到列表选中行(`resumeCurrentTrack` / `pauseCurrentTrack`)。
+  `build.sh` / `test.sh` 新增链接 MediaPlayer 框架。
+  切歌后给封面 0.4s 宽限:内嵌封面是异步读的,先发无封面信息系统卡片会闪一下 App 图标,
+  宽限内没封面就先不发(卡片多停留一拍在上一首),封面一到或到期即发。
+  歌手标签为空时按「歌手 - 歌名」拆开给系统,与列表和悬停卡片一致。
+
 ## 2026-09-10
 
 ### Fixed

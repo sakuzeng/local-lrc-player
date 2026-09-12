@@ -4,6 +4,7 @@ final class PlayerWindowController: NSWindowController {
     var layout: PlayerWindowLayout!
     let trackListDataSource = TrackListDataSource()
     let playbackController = PlaybackController()
+    let nowPlayingCenter = NowPlayingCenter()
     let lyricSearchService = LyricSearchService()
     let libraryRepository = LibraryRepository()
     let trackRepository = TrackRepository()
@@ -39,6 +40,8 @@ final class PlayerWindowController: NSWindowController {
     var nowPlayingTitle: String?
     var nowPlayingArtist: String?
     var nowPlayingArtwork: NSImage?
+    /// 切歌后给封面的宽限截止时间：没到期且还没封面就先不发系统「正在播放」，免得卡片闪一下 App 图标。
+    var nowPlayingArtworkGraceUntil: Date?
     // 里程碑计数：本次播放对应的 play_history 行、已实际播放的秒数、是否已计为有效播放。
     var currentPlayHistoryId: Int64?
     var listenedSecondsThisPlay: TimeInterval = 0
@@ -73,6 +76,7 @@ final class PlayerWindowController: NSWindowController {
     }
 
     deinit {
+        nowPlayingCenter.detach()
         progressTimer?.invalidate()
         windowFrameSaveTimer?.invalidate()
         volumeSaveTimer?.invalidate()
@@ -98,6 +102,7 @@ final class PlayerWindowController: NSWindowController {
             windowToolbar = toolbar
         }
         bindActions()
+        bindNowPlayingCenter()
         restorePlaybackMode()
         layout.lyricsView.showPlaceholder("请选择歌曲")
         updateControlState()

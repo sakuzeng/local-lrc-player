@@ -18,6 +18,7 @@ swiftc \
   -framework AppKit \
   -framework AVFoundation \
   -framework QuartzCore \
+  -framework MediaPlayer \
   -lsqlite3 \
   "${SWIFT_FILES[@]}" \
   "$ROOT_DIR/Tests/RunDatabaseTests/main.swift" \
