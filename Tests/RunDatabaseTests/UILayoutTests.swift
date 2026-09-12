@@ -11,6 +11,7 @@ struct UILayoutTests {
         try testMenuBarCardCollapsesEmptyLyricRow()
         try testLyricsViewStylesAndCentersActiveLine()
         try testTrackListCellStylesPlayingRow()
+        try testMenuBarCardExposesAccessibilityLabels()
     }
 
     // MARK: - 菜单栏卡片
@@ -61,6 +62,38 @@ struct UILayoutTests {
 
         try assertEqual(withLyric.rounded(), 172, "card with lyric row")
         try assertTrue(withLyric - withoutLyric >= 15, "empty lyric row should collapse, got \(withLyric) vs \(withoutLyric)")
+    }
+
+    private func testMenuBarCardExposesAccessibilityLabels() throws {
+        let card = MenuBarNowPlayingCardView()
+        let window = host(card, size: NSSize(width: 320, height: 200))
+        card.apply(snapshot(title: "歌名", artist: "歌手", lyric: "一句歌词"))
+        fit(window)
+
+        var buttons: [NSButton] = []
+        var sliders: [NSSlider] = []
+        var images: [NSImageView] = []
+        func walk(_ view: NSView) {
+            if let button = view as? NSButton { buttons.append(button) }
+            if let slider = view as? NSSlider { sliders.append(slider) }
+            if let image = view as? NSImageView { images.append(image) }
+            view.subviews.forEach(walk)
+        }
+        walk(card)
+
+        try assertEqual(buttons.count, 4, "previous / play / next / mode")
+        for button in buttons {
+            try assertTrue(!(button.accessibilityLabel() ?? "").isEmpty, "every card button needs an accessibility label")
+        }
+        try assertEqual(sliders.count, 2, "progress + volume")
+        try assertEqual(Set(sliders.compactMap { $0.accessibilityLabel() }), ["播放进度", "音量"])
+        for image in images {
+            try assertTrue(!image.isAccessibilityElement(), "decorative images stay out of the VoiceOver order")
+        }
+        // 播放态切换后播放键的标签跟着变。
+        try assertEqual(buttons.first { $0.accessibilityLabel() == "暂停" } != nil, true, "playing snapshot labels the play button 暂停")
+        card.apply(nil)
+        try assertEqual(buttons.first { $0.accessibilityLabel() == "播放" } != nil, true, "idle snapshot labels it 播放")
     }
 
     // MARK: - 歌词区

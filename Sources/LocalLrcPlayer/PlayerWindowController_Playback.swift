@@ -380,7 +380,7 @@ extension PlayerWindowController {
         let current = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0
         switch playbackMode {
         case .sequential, .repeatOne:
-            playTrack(at: max(current - 1, 0))
+            playTrack(at: Self.wrappedIndex(current - 1, count: tracks.count))
         case .shuffle:
             if shuffleHistory.count > 1 {
                 shuffleHistory.removeLast()
@@ -409,11 +409,20 @@ extension PlayerWindowController {
         }
         switch playbackMode {
         case .sequential, .repeatOne:
-            playTrack(at: min(current + 1, tracks.count - 1))
+            playTrack(at: Self.wrappedIndex(current + 1, count: tracks.count))
         case .shuffle:
             appendShuffleHistory(current)
             playTrack(at: randomTrackIndex(excluding: current))
         }
+    }
+
+    /// 顺序/单曲循环下手动切歌首尾循环，与自动播完「末首回第一首」一致；
+    /// 以前用 min/max 钳住，最后一首按下一首会原地重播。
+    static func wrappedIndex(_ index: Int, count: Int) -> Int {
+        guard count > 0 else {
+            return 0
+        }
+        return ((index % count) + count) % count
     }
 
     func playerItemDidEnd() {
@@ -757,7 +766,10 @@ extension PlayerWindowController {
     }
 
     func updateTimeLabel(current: TimeInterval, duration: TimeInterval) {
-        layout.timeLabel.stringValue = "\(formatTime(current)) / \(formatTime(duration))"
+        let text = "\(formatTime(current)) / \(formatTime(duration))"
+        layout.timeLabel.stringValue = text
+        // VoiceOver 读进度条时念时间而不是百分比。
+        layout.progressSlider.setAccessibilityValueDescription(text)
     }
 
     func formatTime(_ time: TimeInterval) -> String {

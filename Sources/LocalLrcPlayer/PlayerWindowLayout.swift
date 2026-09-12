@@ -35,7 +35,6 @@ final class PlayerWindowLayout {
     private let listContainer = NSView()
     private let lyricsContainer = NSView()
     private let listHeaderBar = NSStackView()
-    private let listTitleLabel = NSTextField(labelWithString: "歌曲")
     private let listNavigationStack = NSStackView()
     private let tableScrollView = NSScrollView()
     private let transportBar = NSView()
@@ -130,10 +129,15 @@ final class PlayerWindowLayout {
         listHeaderBar.isHidden = false
     }
 
-    /// 「全部」时沿用「歌曲 · N」，自建列表显示列表名。
+    /// 「全部」时沿用「歌曲 · N」，自建列表显示列表名；标题即下拉按钮，颜色走 attributedTitle。
     func updateListHeader(trackCount: Int, playlistName: String? = nil) {
         let name = playlistName ?? "歌曲"
-        listTitleLabel.stringValue = trackCount > 0 ? "\(name) · \(trackCount)" : name
+        let text = trackCount > 0 ? "\(name) · \(trackCount)" : name
+        playlistMenuButton.attributedTitle = NSAttributedString(string: text, attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor.secondaryLabelColor
+        ])
+        playlistMenuButton.setAccessibilityLabel("播放列表：\(text)")
     }
 
     private func setup(in contentView: NSView) {
@@ -227,6 +231,7 @@ final class PlayerWindowLayout {
         immersiveExitButton.bezelStyle = .regularSquare
         immersiveExitButton.contentTintColor = .secondaryLabelColor
         immersiveExitButton.toolTip = "退出沉浸模式（Esc）"
+        immersiveExitButton.setAccessibilityLabel("退出沉浸模式")
         immersiveExitButton.translatesAutoresizingMaskIntoConstraints = false
 
         immersiveControlBar.translatesAutoresizingMaskIntoConstraints = false
@@ -486,6 +491,7 @@ final class PlayerWindowLayout {
         volumeButton.bezelStyle = .regularSquare
         volumeButton.contentTintColor = .secondaryLabelColor
         volumeButton.toolTip = "音量"
+        volumeButton.setAccessibilityLabel("音量")
         volumeButton.setContentHuggingPriority(.required, for: .horizontal)
 
         // 竖向滑杆装在 transient popover 里（下小上大）；必须显式 isVertical，仅靠约束不可靠。
@@ -621,13 +627,9 @@ final class PlayerWindowLayout {
         tableScrollView.borderType = .noBorder
         tableScrollView.translatesAutoresizingMaskIntoConstraints = false
 
-        listTitleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        listTitleLabel.textColor = .secondaryLabelColor
-
         listNavigationStack.orientation = .horizontal
         listNavigationStack.alignment = .centerY
         listNavigationStack.spacing = 4
-        listNavigationStack.addArrangedSubview(playlistMenuButton)
         listNavigationStack.addArrangedSubview(locatePlayingButton)
         listNavigationStack.addArrangedSubview(immersiveEnterButton)
 
@@ -635,7 +637,8 @@ final class PlayerWindowLayout {
         listHeaderBar.alignment = .centerY
         listHeaderBar.spacing = 8
         listHeaderBar.translatesAutoresizingMaskIntoConstraints = false
-        listHeaderBar.addArrangedSubview(listTitleLabel)
+        // 标题本身就是播放列表下拉按钮：「歌曲 · N ⌄」，点开切换/新建/重命名/删除。
+        listHeaderBar.addArrangedSubview(playlistMenuButton)
         listHeaderBar.addArrangedSubview(NSView()) // spacer
         listHeaderBar.addArrangedSubview(listNavigationStack)
         if let spacer = listHeaderBar.arrangedSubviews[1] as? NSView {
@@ -730,15 +733,22 @@ final class PlayerWindowLayout {
             weight: .semibold
         )
         playButton.toolTip = showsPause ? "暂停" : "播放"
+        playButton.setAccessibilityLabel(showsPause ? "暂停" : "播放")
     }
 
     private func configureTransportButtons() {
+        // 自绘 / 纯图标控件没有可读文字，VoiceOver 只能靠这些标签；toolTip 只算 help。
+        progressSlider.setAccessibilityLabel("播放进度")
+        volumeSlider.setAccessibilityLabel("音量")
+        tableView.setAccessibilityLabel("歌曲列表")
+
         previousButton.image = Self.symbolImage("backward.fill", pointSize: 15, weight: .semibold)
         previousButton.imagePosition = .imageOnly
         previousButton.isBordered = false
         previousButton.bezelStyle = .regularSquare
         previousButton.contentTintColor = .labelColor
         previousButton.toolTip = "上一首"
+        previousButton.setAccessibilityLabel("上一首")
         previousButton.setContentHuggingPriority(.required, for: .horizontal)
 
         playButton.bezelStyle = .regularSquare
@@ -754,6 +764,7 @@ final class PlayerWindowLayout {
         nextButton.bezelStyle = .regularSquare
         nextButton.contentTintColor = .labelColor
         nextButton.toolTip = "下一首"
+        nextButton.setAccessibilityLabel("下一首")
         nextButton.setContentHuggingPriority(.required, for: .horizontal)
 
         playbackModeButton.imagePosition = .imageOnly
@@ -768,15 +779,21 @@ final class PlayerWindowLayout {
         locatePlayingButton.bezelStyle = .regularSquare
         locatePlayingButton.contentTintColor = .secondaryLabelColor
         locatePlayingButton.toolTip = "定位正在播放的歌曲"
+        locatePlayingButton.setAccessibilityLabel("定位正在播放的歌曲")
         locatePlayingButton.setContentHuggingPriority(.required, for: .horizontal)
 
-        playlistMenuButton.image = Self.symbolImage("music.note.list", pointSize: 14, weight: .semibold)
-        playlistMenuButton.imagePosition = .imageOnly
+        // 顶栏标题：文字 + 尾随小箭头，长列表名可截断。
+        playlistMenuButton.image = Self.symbolImage("chevron.down", pointSize: 9, weight: .bold)
+        playlistMenuButton.imagePosition = .imageTrailing
+        playlistMenuButton.imageHugsTitle = true
         playlistMenuButton.isBordered = false
         playlistMenuButton.bezelStyle = .regularSquare
         playlistMenuButton.contentTintColor = .secondaryLabelColor
-        playlistMenuButton.toolTip = "播放列表"
+        playlistMenuButton.lineBreakMode = .byTruncatingTail
+        playlistMenuButton.toolTip = "切换播放列表"
+        playlistMenuButton.setAccessibilityHelp("切换、新建、重命名或删除播放列表")
         playlistMenuButton.setContentHuggingPriority(.required, for: .horizontal)
+        playlistMenuButton.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         immersiveEnterButton.image = Self.symbolImage("arrow.up.left.and.arrow.down.right", pointSize: 13, weight: .semibold)
         immersiveEnterButton.imagePosition = .imageOnly
@@ -784,12 +801,14 @@ final class PlayerWindowLayout {
         immersiveEnterButton.bezelStyle = .regularSquare
         immersiveEnterButton.contentTintColor = .secondaryLabelColor
         immersiveEnterButton.toolTip = "沉浸模式（⌘⇧F）"
+        immersiveEnterButton.setAccessibilityLabel("进入沉浸模式")
         immersiveEnterButton.setContentHuggingPriority(.required, for: .horizontal)
     }
 
     func setPlaybackMode(_ mode: PlaybackMode) {
         playbackModeButton.image = Self.modeSymbolImage(for: mode)
         playbackModeButton.toolTip = mode.title
+        playbackModeButton.setAccessibilityLabel("播放模式：\(mode.title)")
     }
 
     private static func modeSymbolImage(for mode: PlaybackMode) -> NSImage? {

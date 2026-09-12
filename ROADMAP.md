@@ -16,7 +16,7 @@
 - ~~UI 回归测试 + LrcParser 单测~~（2026-09-13 完成：`Tests/RunDatabaseTests/UILayoutTests.swift`、`LrcParserTests.swift`）。
 - ~~日志~~（2026-09-13 完成：`AppLog` + 帮助菜单「导出诊断信息…」，`DiagnosticsReport`）。
 - ~~播放队列与自建播放列表~~（2026-09-13 完成：队列 `PlayerWindowController_Queue`，自建列表 `PlayerWindowController_Playlists` + `PlaylistRepository`）。后续可做：列表内拖拽排序、队列侧栏。
-- 无障碍：`SeekSlider`、卡片按钮、菜单栏状态项等自绘控件补 accessibility label 与键盘操作。
+- ~~无障碍~~（2026-09-13 完成：全部图标控件、滑杆、状态项补标签/数值描述，进度条方向键 seek）。
 - 代码结构：把播放态抽成独立 model，窗口、菜单栏卡片、沉浸模式都订阅它，
   不再绕回窗口控制器取数据；顺手删掉遗留的 `MenuBarLyricsView`。
 

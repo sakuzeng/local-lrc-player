@@ -121,8 +121,8 @@
 
 实现：`PlayerWindowLayout.configureListContainer()`。
 
-- 左侧 `listTitleLabel`：「全部」时 `歌曲 · {曲目数}`，自建列表时 `{列表名} · {曲目数}`（`updateListHeader(trackCount:playlistName:)`）。
-- 右侧 `listNavigationStack`：水平 `NSStackView`，依次为 `playlistMenuButton`（`music.note.list`，点击弹播放列表菜单）、`locatePlayingButton`（`scope`）、沉浸模式按钮。
+- 左侧 `playlistMenuButton`：标题即下拉按钮，「全部」时 `歌曲 · {曲目数} ⌄`，自建列表时 `{列表名} · {曲目数} ⌄`（`updateListHeader(trackCount:playlistName:)` 写 attributedTitle），点击弹播放列表菜单；长名字尾部截断。
+- 右侧 `listNavigationStack`：水平 `NSStackView`，依次为 `locatePlayingButton`（`scope`）、沉浸模式按钮。
 - 空状态（无库 / 无曲 / 搜索无结果）时 `listHeaderBar.isHidden = true`；例外是自建列表为空：显示「『X』还没有歌曲」并保留顶栏，否则没法切回「全部」。
 
 ### 定位正在播放
@@ -136,7 +136,7 @@
 ### 播放列表（`PlayerWindowController_Playlists`）
 
 - 当前列表在控制器里（`currentPlaylistId` / `currentPlaylistName`）并持久化到 `player_state.current_playlist_id`；启动时 `restoreCurrentPlaylistSelection` 先站到上次的列表再恢复上次曲目，列表已删则回「全部」。`reloadMasterPlaylist` 按它查，搜索和队列都在当前列表内生效。
-- 顶栏按钮菜单：所有列表（当前项打勾）→ 新建播放列表… → 自建列表时再给 重命名 / 删除。名字用 `NSAlert` 加 `NSTextField` accessory 输入。
+- 顶栏标题菜单：所有列表（当前项打勾）→ 新建播放列表… → 自建列表时再给 重命名 / 删除。名字用 `NSAlert` 加 `NSTextField` accessory 输入。
 - 曲目行右键在队列项之后由 `onContextMenuNeeded` 交给控制器追加：「加入播放列表 ▸」（每个自建列表一项，按成员关系打勾，点了切换；末尾「新建播放列表并加入…」），自建列表视图下再加「从『X』移除」。
 - 切到不含正在播放曲目的列表时 `currentTrackIndex` 清空、播放继续，下一首/自动切歌从新列表算。
 
@@ -203,4 +203,5 @@
 - 改工具栏项顺序或新增工具栏控件时，先对照本文 NSToolbar 一节，避免破坏两段 pill 布局。
 - 改列表顶栏或播放区控件时，同步更新本文与 `HANDOFF.md`。
 - 用户可见行为变更写入 `CHANGELOG.md`。
+- 新增纯图标按钮或自绘控件时必须 `setAccessibilityLabel`（toolTip 只算 help，VoiceOver 不念）；状态会变的按钮在切换处同步改标签；纯装饰的图片 `setAccessibilityElement(false)`。
 - 菜单栏卡片、歌词区、曲目列表行的关键 frame 有离屏布局回归测试（`Tests/RunDatabaseTests/UILayoutTests.swift`），改这三块的布局常量或约束时同步更新断言；新增断言优先复用同一实例做状态切换，新建视图往往是对的、复用后才会漂。

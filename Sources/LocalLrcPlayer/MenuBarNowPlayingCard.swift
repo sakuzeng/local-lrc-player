@@ -119,6 +119,7 @@ final class MenuBarNowPlayingCardView: NSView {
             elapsedLabel.stringValue = "00:00"
             durationLabel.stringValue = "00:00"
             playButton.image = Self.playSymbol(isPlaying: false)
+            playButton.setAccessibilityLabel("播放")
             setTransportEnabled(false)
             return
         }
@@ -153,8 +154,11 @@ final class MenuBarNowPlayingCardView: NSView {
         durationLabel.stringValue = Self.formatTime(snapshot.duration)
 
         playButton.image = Self.playSymbol(isPlaying: snapshot.isPlaying)
+        playButton.setAccessibilityLabel(snapshot.isPlaying ? "暂停" : "播放")
         modeButton.image = UIChrome.symbolImage(snapshot.mode.symbolName, pointSize: 11, weight: .medium)
         modeButton.toolTip = snapshot.mode.title
+        modeButton.setAccessibilityLabel("播放模式：\(snapshot.mode.title)")
+        progressSlider.setAccessibilityValueDescription("\(elapsedLabel.stringValue) / \(durationLabel.stringValue)")
 
         if !volumeSlider.isTrackingMouse {
             volumeSlider.doubleValue = snapshot.volume
@@ -186,6 +190,8 @@ final class MenuBarNowPlayingCardView: NSView {
     private func setup() {
         translatesAutoresizingMaskIntoConstraints = false
 
+        // 封面和音量小喇叭是装饰，不让 VoiceOver 停在上面。
+        artView.setAccessibilityElement(false)
         artView.wantsLayer = true
         artView.layer?.cornerRadius = 8
         artView.layer?.cornerCurve = .continuous
@@ -228,6 +234,7 @@ final class MenuBarNowPlayingCardView: NSView {
         topStack.spacing = 9
         topStack.translatesAutoresizingMaskIntoConstraints = false
 
+        progressSlider.setAccessibilityLabel("播放进度")
         progressSlider.minValue = 0
         progressSlider.maxValue = 1
         progressSlider.target = self
@@ -246,12 +253,12 @@ final class MenuBarNowPlayingCardView: NSView {
             label.translatesAutoresizingMaskIntoConstraints = false
         }
 
-        configureIconButton(previousButton, symbol: "backward.fill", pointSize: 12, action: #selector(previousClicked))
-        configureIconButton(nextButton, symbol: "forward.fill", pointSize: 12, action: #selector(nextClicked))
-        configureIconButton(modeButton, symbol: "arrow.right.to.line.compact", pointSize: 11, action: #selector(modeClicked))
+        configureIconButton(previousButton, symbol: "backward.fill", pointSize: 12, label: "上一首", action: #selector(previousClicked))
+        configureIconButton(nextButton, symbol: "forward.fill", pointSize: 12, label: "下一首", action: #selector(nextClicked))
+        configureIconButton(modeButton, symbol: "arrow.right.to.line.compact", pointSize: 11, label: "播放模式", action: #selector(modeClicked))
         modeButton.contentTintColor = .secondaryLabelColor
 
-        configureIconButton(playButton, symbol: "play.fill", pointSize: 11, action: #selector(playClicked))
+        configureIconButton(playButton, symbol: "play.fill", pointSize: 11, label: "播放", action: #selector(playClicked))
         playButton.contentTintColor = .white
         playButton.wantsLayer = true
 
@@ -259,10 +266,12 @@ final class MenuBarNowPlayingCardView: NSView {
         playButton.toolTip = "播放/暂停"
         nextButton.toolTip = "下一首"
 
+        volumeIcon.setAccessibilityElement(false)
         volumeIcon.image = UIChrome.symbolImage("speaker.wave.2.fill", pointSize: 10, weight: .regular)
         volumeIcon.contentTintColor = .tertiaryLabelColor
         volumeIcon.translatesAutoresizingMaskIntoConstraints = false
 
+        volumeSlider.setAccessibilityLabel("音量")
         volumeSlider.minValue = 0
         volumeSlider.maxValue = 1
         volumeSlider.doubleValue = 1
@@ -353,8 +362,10 @@ final class MenuBarNowPlayingCardView: NSView {
         _ button: NSButton,
         symbol: String,
         pointSize: CGFloat,
+        label: String,
         action: Selector
     ) {
+        button.setAccessibilityLabel(label)
         button.image = UIChrome.symbolImage(symbol, pointSize: pointSize, weight: .medium)
         button.imagePosition = .imageOnly
         button.isBordered = false

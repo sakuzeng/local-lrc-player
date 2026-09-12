@@ -200,6 +200,7 @@ final class LyricsView: NSScrollView {
         // 失焦时 AppKit 只把它画成非强调色、不会清掉，点别处也去不了。
         // NSClickGestureRecognizer 不依赖可选性，点行 seek 照常。
         textView.isSelectable = false
+        textView.setAccessibilityLabel("歌词")
         textView.drawsBackground = false
         textView.backgroundColor = .clear
         textView.textContainerInset = NSSize(width: profile.horizontalInset, height: 32)

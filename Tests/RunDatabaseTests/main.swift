@@ -627,6 +627,7 @@ do {
     try MenuBarLyricsMaxWidthTests().runAll()
     try LrcParserTests().runAll()
     try PlayQueueTests().runAll()
+    try TrackNavigationTests().runAll()
     try UILayoutTests().runAll()
     print("All tests passed.")
 } catch {

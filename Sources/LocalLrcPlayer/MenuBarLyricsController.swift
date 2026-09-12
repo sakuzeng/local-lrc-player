@@ -611,6 +611,10 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         button.toolTip = nil
         button.title = ""
         button.imagePosition = .imageOnly
+        // 状态项只有一张位图，VoiceOver 靠这里知道它是什么、当前是哪句。
+        button.setAccessibilityLabel("菜单栏歌词")
+        button.setAccessibilityValue(displayText)
+        button.setAccessibilityHelp("点击打开菜单；鼠标停留弹出正在播放卡片")
         button.image = MenuBarLyricsStatusImage.make(
             text: displayText,
             width: width,

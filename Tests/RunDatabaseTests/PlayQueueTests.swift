@@ -39,3 +39,14 @@ struct PlayQueueTests {
         try assertTrue(PlayerWindowController.firstPlayable(in: [], tracks: tracks) == nil, "empty queue")
     }
 }
+
+/// 顺序模式手动切歌的首尾循环：末首下一首回第一首，首首上一首到末首。
+struct TrackNavigationTests {
+    func runAll() throws {
+        try assertEqual(PlayerWindowController.wrappedIndex(5, count: 5), 0, "next after the last wraps to first")
+        try assertEqual(PlayerWindowController.wrappedIndex(-1, count: 5), 4, "previous before the first wraps to last")
+        try assertEqual(PlayerWindowController.wrappedIndex(2, count: 5), 2, "in-range index is unchanged")
+        try assertEqual(PlayerWindowController.wrappedIndex(1, count: 1), 0, "single track loops on itself")
+        try assertEqual(PlayerWindowController.wrappedIndex(3, count: 0), 0, "empty list is safe")
+    }
+}
