@@ -5,6 +5,7 @@ final class PlayerWindowController: NSWindowController {
     let trackListDataSource = TrackListDataSource()
     let playbackController = PlaybackController()
     let nowPlayingCenter = NowPlayingCenter()
+    let nowPlayingModel = NowPlayingModel()
     let libraryWatcher = LibraryFolderWatcher()
     var isAutoSyncInProgress = false
     var autoSyncRequestedWhileRunning = false
@@ -111,6 +112,7 @@ final class PlayerWindowController: NSWindowController {
             windowToolbar = toolbar
         }
         bindActions()
+        bindNowPlayingModel()
         bindNowPlayingCenter()
         bindLibraryWatcher()
         restorePlaybackMode()

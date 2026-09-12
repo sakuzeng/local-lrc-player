@@ -291,8 +291,6 @@ extension PlayerWindowController {
             return
         }
 
-        menuBarLyricsController.refreshNowPlayingCardIfVisible()
-
         let currentTime = time ?? playbackController.currentTime() ?? 0
         let isPlaying = playbackController.isPlaying
 

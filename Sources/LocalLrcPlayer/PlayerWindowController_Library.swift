@@ -247,10 +247,15 @@ extension PlayerWindowController {
         removed: Int,
         deduplicated: Int
     ) -> String {
-        var parts = ["共 \(total) 首"]
+        // total / missingLyrics 是音乐库(总列表)的数;看自建列表时先说当前列表,
+        // 库的数放括号里,免得「共 55 首」对着一个只有 1 首的列表。
+        var libraryParts = ["共 \(total) 首"]
         if missingLyrics > 0 {
-            parts.append("\(missingLyrics) 首无歌词")
+            libraryParts.append("\(missingLyrics) 首无歌词")
         }
+        var parts = isViewingMasterPlaylist
+            ? libraryParts
+            : ["「\(currentPlaylistName)」\(tracks.count) 首（音乐库\(libraryParts.joined(separator: "，"))）"]
         if inserted + updated + removed + deduplicated > 0 {
             parts.append("同步 +\(inserted)/~\(updated)/-\(removed)")
             if deduplicated > 0 {

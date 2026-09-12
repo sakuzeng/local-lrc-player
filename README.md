@@ -268,7 +268,6 @@ Sources/LocalLrcPlayer/
   MenuBarStatusItemVisibility.swift  NSStatusItem 可见性恢复
   MenuBarVisibilityGuide.swift    macOS 26 菜单栏权限引导
   LibraryBookmarkStore.swift      音乐库 Security-Scoped Bookmark
-  MenuBarLyricsView.swift       （遗留）自定义 NSView 绘制
   AppDelegate.swift             应用生命周期、About/Help
   AppMenuBuilder.swift          标准 macOS 菜单栏与快捷键
   main.swift                    App 启动入口

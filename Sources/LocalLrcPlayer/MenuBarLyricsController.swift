@@ -114,7 +114,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
     ) {
         self.playerWindowController = playerWindowController
         self.settingsRepository = settingsRepository
-        self.nowPlayingCard = MenuBarNowPlayingCardController(playerWindowController: playerWindowController)
+        self.nowPlayingCard = MenuBarNowPlayingCardController(model: playerWindowController.nowPlayingModel)
         super.init()
         NotificationCenter.default.addObserver(
             self,
@@ -222,11 +222,6 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
 
     func menuDidClose(_ menu: NSMenu) {
         nowPlayingCard.setMenuOpen(false)
-    }
-
-    /// 挂在 PlayerWindowController 的 0.2s 推送链上；卡片没弹出时直接返回，零开销。
-    func refreshNowPlayingCardIfVisible() {
-        nowPlayingCard.refreshIfVisible()
     }
 
     @objc func showMainWindow(_ sender: Any?) {

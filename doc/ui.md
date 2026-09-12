@@ -186,8 +186,8 @@
 - 封面与歌名/歌手文字块用显式约束对齐（文字块 centerY 对齐封面），不用横向 `NSStackView` 的 `centerY`：歌手行显隐切换改变文字块高度后，stack 的 centerY 对齐不会重新居中，文字块会贴到封面顶端；新建卡片正常，只有复用的卡片切歌时出现。
 - 控件全是新实例，不与主窗口共用。主窗口那套被 `bindActions` 绑死且散布在控制器各处，挪过来会出状态漂移。
 - 卡片弹出时 App 通常在后台，控件必须 `acceptsFirstMouse`，否则第一次点击只会激活 App 并被吞掉（`CardButton` / `CardSeekSlider`）。
-- 数据走 `PlayerWindowController.currentNowPlayingSnapshot()`；封面在控制器侧另存一份，因为 layout 只把它放进私有 `NSImageView`。
-- 刷新挂在既有的 0.2s 推送链（`syncMenuBarLyrics`），卡片没弹出时直接返回，不新开 timer。
+- 数据走 `NowPlayingModel`：卡片只读 `snapshot`、订阅变化，按钮/滑杆回调调 `model.commands`，不拿窗口控制器；控制器在切歌、播放/暂停、seek 完成和 0.2s tick 时发布快照。封面在控制器侧另存一份，因为 layout 只把它放进私有 `NSImageView`。
+- 刷新靠订阅 model（控制器 0.2s tick 发布一次），卡片没弹出时直接返回，不新开 timer。
 - 拖动进度/音量期间不回写滑杆值（`SeekSlider.isTrackingMouse`），否则会被 0.2s 刷新拽回播放头。
 - status button 不设 `toolTip`：系统气泡会叠在卡片上方重复同一句歌词，改由卡片第三行显示完整当前行。
 - tracking area 挂在 `statusItem.button` 上（owner 回调，不加 subview —— `enable()` 有「button 有子视图就重建」的判断）；`item.length` 随歌词滚动频繁变化，用 `.inVisibleRect` 让区域自己跟着 bounds 走；statusItem 重建时按 button 身份幂等重挂。

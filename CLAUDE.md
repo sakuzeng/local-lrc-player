@@ -60,8 +60,10 @@ open build/LocalLrcPlayer.app
 
 播放。 `PlaybackController` 封装 `AVPlayer`;`PlaybackAssetResolver` 处理
 FLAC→ALAC 的转码缓存路径;`SeekSlider` 是自定义进度条,带「先预览、松手再 seek」的行为;
-`PlaybackMode` 是顺序/单曲循环/随机的枚举(持久化)。`NowPlayingCenter` 把播放态喂给系统
-「正在播放」(MediaPlayer 框架)并把媒体键/控制中心的远程指令回调给 `PlayerWindowController_NowPlaying`。
+`PlaybackMode` 是顺序/单曲循环/随机的枚举(持久化)。`NowPlayingModel` 是播放态的唯一真相:
+窗口控制器是唯一写入方(切歌、播放/暂停、seek 完成、0.2s tick 时发布快照),菜单栏卡片等消费者
+只读快照、订阅变化,想控制播放就调它的 `commands`,不反向依赖窗口控制器。`NowPlayingCenter` 把播放态
+喂给系统「正在播放」(MediaPlayer 框架)并把媒体键/控制中心的远程指令回调给 `PlayerWindowController_NowPlaying`。
 
 歌词下载(两个来源)。 `NetEaseLyricClient` 和 `QQMusicLyricClient` 分别请求各自的
 Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Keychain)。
@@ -71,7 +73,7 @@ Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Ke
 
 菜单栏歌词。 `MenuBarLyricsController` 在窗口关闭后仍持续显示当前行;
 `MenuBarLyricsStatusImage` 渲染滚动位图;`MenuBarStatusItemVisibility` /
-`MenuBarVisibilityGuide` 处理 macOS 26 的菜单栏可见性权限。`MenuBarLyricsView` 是遗留代码。
+`MenuBarVisibilityGuide` 处理 macOS 26 的菜单栏可见性权限。
 
 日志与诊断。 `AppLog` 是唯一的 `os.Logger` 入口(subsystem 为 bundle id,按模块分 category);
 失败分支旁落日志、不改行为,Cookie 值永不进日志;关键事件用 notice 持久化,高频事件用 info。

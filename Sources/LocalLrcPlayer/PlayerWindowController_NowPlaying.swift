@@ -1,7 +1,20 @@
 import AppKit
 
+/// 播放态的对外出口：快照 → NowPlayingModel（菜单栏卡片等消费者订阅）；
 /// 系统「正在播放」接线：远程指令 → 既有播放入口；播放态 → NowPlayingCenter。
 extension PlayerWindowController {
+    /// 消费者通过 model.commands 控制播放，这里把命令接到既有入口。
+    func bindNowPlayingModel() {
+        nowPlayingModel.commands = NowPlayingModel.Commands(
+            togglePlayPause: { [weak self] in self?.togglePlayback() },
+            next: { [weak self] in self?.playNext() },
+            previous: { [weak self] in self?.playPrevious() },
+            cycleMode: { [weak self] in self?.cyclePlaybackMode() },
+            seek: { [weak self] fraction in self?.seekFromRemote(toFraction: fraction) },
+            setVolume: { [weak self] value in self?.setVolumeFromRemote(value) }
+        )
+    }
+
     /// 媒体键的播放/暂停只作用于当前曲目，不像空格（togglePlayback）那样会跳去列表选中行。
     func bindNowPlayingCenter() {
         nowPlayingCenter.onPlay = { [weak self] in
@@ -38,6 +51,7 @@ extension PlayerWindowController {
     /// 播放态的唯一出口：切歌、播放/暂停、seek 完成后调；没有曲目就清掉系统卡片。
     /// play() 之后 AVPlayer 会短暂处于 waiting，此时 isPlaying 还是 false，调用方可显式指定。
     func publishNowPlayingState(isPlaying: Bool? = nil) {
+        nowPlayingModel.publish(currentNowPlayingSnapshot())
         guard var state = currentNowPlayingState() else {
             nowPlayingCenter.clear()
             return
@@ -53,6 +67,7 @@ extension PlayerWindowController {
 
     /// 挂在 0.2s tick 上的对账，只在真的变了才重发；封面宽限到期后也由这里补发。
     func reconcileNowPlayingState() {
+        nowPlayingModel.publish(currentNowPlayingSnapshot())
         guard let state = currentNowPlayingState() else {
             nowPlayingCenter.clear()
             return

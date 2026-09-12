@@ -428,7 +428,9 @@ final class MenuBarNowPlayingCardController: NSResponder {
     private static let screenMargin: CGFloat = 8
     private static let cornerRadius: CGFloat = 14
 
-    private weak var playerWindowController: PlayerWindowController?
+    /// 只读播放态、订阅刷新、经 commands 控制播放；不拿窗口控制器。
+    private let model: NowPlayingModel
+    private var modelObservation: NowPlayingModel.Observation?
     private let panel = NSPanel(
         contentRect: NSRect(x: 0, y: 0, width: 320, height: 200),
         styleMask: [.borderless, .nonactivatingPanel],
@@ -450,10 +452,14 @@ final class MenuBarNowPlayingCardController: NSResponder {
         panel.isVisible
     }
 
-    init(playerWindowController: PlayerWindowController?) {
-        self.playerWindowController = playerWindowController
+    init(model: NowPlayingModel) {
+        self.model = model
         super.init()
         configurePanel()
+        // 控制器每 0.2s tick 发布一次；卡片没弹出时 refreshIfVisible 直接返回。
+        modelObservation = model.observe { [weak self] _ in
+            self?.refreshIfVisible()
+        }
 
         cardView.onEnter = { [weak self] in
             self?.insideCard = true
@@ -464,22 +470,22 @@ final class MenuBarNowPlayingCardController: NSResponder {
             self?.scheduleClose()
         }
         cardView.onPrevious = { [weak self] in
-            self?.playerWindowController?.playPreviousFromMenu()
+            self?.model.commands.previous()
         }
         cardView.onTogglePlayback = { [weak self] in
-            self?.playerWindowController?.togglePlaybackFromMenu()
+            self?.model.commands.togglePlayPause()
         }
         cardView.onNext = { [weak self] in
-            self?.playerWindowController?.playNextFromMenu()
+            self?.model.commands.next()
         }
         cardView.onCycleMode = { [weak self] in
-            self?.playerWindowController?.cyclePlaybackMode()
+            self?.model.commands.cycleMode()
         }
         cardView.onSeek = { [weak self] fraction in
-            self?.playerWindowController?.seekFromRemote(toFraction: fraction)
+            self?.model.commands.seek(fraction)
         }
         cardView.onVolume = { [weak self] value in
-            self?.playerWindowController?.setVolumeFromRemote(value)
+            self?.model.commands.setVolume(value)
         }
     }
 
@@ -565,7 +571,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
         guard panel.isVisible else {
             return
         }
-        cardView.apply(playerWindowController?.currentNowPlayingSnapshot())
+        cardView.apply(model.snapshot)
         // 歌词换行会改 item.length（右缘不动、左缘伸缩），歌词行显隐会改卡片高度，
         // 借这条刷新链把面板重新贴回右缘；frame 没变就不动。
         if let button = attachedButton {
@@ -644,7 +650,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
             return
         }
 
-        cardView.apply(playerWindowController?.currentNowPlayingSnapshot())
+        cardView.apply(model.snapshot)
         offscreenTicks = 0
         layoutPanel(under: button)
         // App 多半在后台，普通 orderFront 可能不生效。

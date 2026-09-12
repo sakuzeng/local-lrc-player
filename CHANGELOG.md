@@ -6,6 +6,19 @@
 
 ### Fixed
 
+- 看自建播放列表时底部状态栏仍显示「共 55 首,6 首无歌词」这种音乐库总数,与只有几首的列表对不上:
+  `statusSummary` 在非「全部」视图下先说当前列表几首,库的总数与无歌词数放括号里。
+
+### Changed
+
+- 播放态抽成 `NowPlayingModel`:窗口控制器是唯一写入方,在切歌、播放/暂停、seek 完成和 0.2s tick 时发布快照;
+  菜单栏卡片改为只读快照、订阅变化,按钮和滑杆通过 `model.commands` 控制播放,不再拿着窗口控制器去调
+  `xxxFromMenu` / `currentNowPlayingSnapshot()`,控制器→菜单栏→卡片的手工推送链随之去掉。
+  系统「正在播放」仍由控制器直接喂(封面宽限、waiting 期覆盖是写入侧细节)。`NowPlayingModelTests` 覆盖
+  发布/订阅/退订。`MenuBarLyricsView` 早已不在仓库,文档里的遗留说明一并清掉。
+
+### Fixed
+
 - 顺序/单曲循环模式下,最后一首按「下一首」原地重播、第一首按「上一首」也不动:`playNext` / `playPrevious`
   用 min/max 把索引钳在两端,而自动播完走的是「末首回第一首」。改为首尾循环(`wrappedIndex`),
   与自动切歌一致;随机模式不受影响。`TrackNavigationTests` 覆盖首尾与单曲、空列表。

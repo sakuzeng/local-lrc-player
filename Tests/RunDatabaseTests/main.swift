@@ -628,6 +628,7 @@ do {
     try LrcParserTests().runAll()
     try PlayQueueTests().runAll()
     try TrackNavigationTests().runAll()
+    try NowPlayingModelTests().runAll()
     try UILayoutTests().runAll()
     print("All tests passed.")
 } catch {
