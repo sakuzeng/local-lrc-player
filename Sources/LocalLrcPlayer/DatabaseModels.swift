@@ -1,6 +1,12 @@
 import Foundation
 import SQLite3
 
+struct PlaylistRecord {
+    let id: Int64
+    let name: String
+    let isSystem: Bool
+}
+
 struct LibraryRecord {
     let id: Int64
     let path: String

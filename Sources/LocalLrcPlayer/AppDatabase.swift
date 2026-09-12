@@ -21,7 +21,7 @@ enum MasterPlaylist {
 }
 
 final class AppDatabase {
-    static let currentSchemaVersion = 7
+    static let currentSchemaVersion = 8
 
     static let shared: AppDatabase = {
         do {
@@ -125,6 +125,9 @@ final class AppDatabase {
             }
             if try currentSchemaVersion(db) < 7 {
                 try Self.applyMigrationV7(db, database: self)
+            }
+            if try currentSchemaVersion(db) < 8 {
+                try Self.applyMigrationV8(db, database: self)
             }
 
             let version = try currentSchemaVersion(db)
@@ -231,6 +234,14 @@ final class AppDatabase {
 
     func errorMessage(_ db: OpaquePointer) -> String {
         String(cString: sqlite3_errmsg(db))
+    }
+
+    /// 当前查看的播放列表，重启后回到上次的列表；默认系统总列表「全部」。
+    private static func applyMigrationV8(_ db: OpaquePointer, database: AppDatabase) throws {
+        try database.exec(
+            db,
+            sql: "ALTER TABLE player_state ADD COLUMN current_playlist_id INTEGER NOT NULL DEFAULT 1;"
+        )
     }
 
     private static let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

@@ -1,6 +1,25 @@
 import Foundation
 import SQLite3
 
+enum PlaylistRepositoryError: LocalizedError {
+    case emptyName
+    case duplicateName(String)
+    case systemPlaylistProtected
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName:
+            return "播放列表名称不能为空"
+        case .duplicateName(let name):
+            return "已有同名播放列表「\(name)」"
+        case .systemPlaylistProtected:
+            return "「全部」是系统列表，不能改名或删除"
+        }
+    }
+}
+
+/// playlists / playlist_tracks：id = 1 是系统总列表「全部」，其余为用户自建。
+/// 总列表由 sync 维护（入列 + 重排）；自建列表只由用户操作增删，曲目被删时靠 CASCADE 自动退出。
 final class PlaylistRepository {
     private let database: AppDatabase
 
@@ -8,7 +27,17 @@ final class PlaylistRepository {
         self.database = database
     }
 
+    // MARK: 查询
+
     func masterPlaylistTracks(
+        keyword: String? = nil,
+        missingLyricsOnly: Bool = false
+    ) throws -> [TrackRecord] {
+        try tracks(inPlaylist: MasterPlaylist.id, keyword: keyword, missingLyricsOnly: missingLyricsOnly)
+    }
+
+    func tracks(
+        inPlaylist playlistId: Int64,
         keyword: String? = nil,
         missingLyricsOnly: Bool = false
     ) throws -> [TrackRecord] {
@@ -23,7 +52,8 @@ final class PlaylistRepository {
             if missingLyricsOnly {
                 sql += " AND t.has_lyric = 0"
             }
-            if let keyword, !keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let trimmedKeyword = keyword?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !trimmedKeyword.isEmpty {
                 sql += """
                  AND (
                     t.file_name LIKE ? COLLATE NOCASE OR
@@ -39,18 +69,15 @@ final class PlaylistRepository {
             defer { sqlite3_finalize(statement) }
 
             var bindIndex: Int32 = 1
-            sqlite3_bind_int64(statement, bindIndex, MasterPlaylist.id)
+            sqlite3_bind_int64(statement, bindIndex, playlistId)
             bindIndex += 1
 
-            if let keyword, !keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                let pattern = "%\(keyword.trimmingCharacters(in: .whitespacesAndNewlines))%"
-                sqlite3_bind_text(statement, bindIndex, pattern, -1, Self.sqliteTransient)
-                bindIndex += 1
-                sqlite3_bind_text(statement, bindIndex, pattern, -1, Self.sqliteTransient)
-                bindIndex += 1
-                sqlite3_bind_text(statement, bindIndex, pattern, -1, Self.sqliteTransient)
-                bindIndex += 1
-                sqlite3_bind_text(statement, bindIndex, pattern, -1, Self.sqliteTransient)
+            if !trimmedKeyword.isEmpty {
+                let pattern = "%\(trimmedKeyword)%"
+                for _ in 0..<4 {
+                    sqlite3_bind_text(statement, bindIndex, pattern, -1, Self.sqliteTransient)
+                    bindIndex += 1
+                }
             }
 
             var results: [TrackRecord] = []
@@ -88,7 +115,124 @@ final class PlaylistRepository {
         )
     }
 
+    // MARK: 自建列表
+
+    /// 系统列表在前，其余按名字自然排序。
+    func allPlaylists() throws -> [PlaylistRecord] {
+        try database.read { db in
+            let sql = "SELECT id, name, is_system FROM playlists;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            var results: [PlaylistRecord] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                results.append(PlaylistRecord(
+                    id: sqlite3_column_int64(statement, 0),
+                    name: String(cString: sqlite3_column_text(statement, 1)),
+                    isSystem: sqlite3_column_int(statement, 2) != 0
+                ))
+            }
+            return results.sorted { lhs, rhs in
+                if lhs.isSystem != rhs.isSystem {
+                    return lhs.isSystem
+                }
+                return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+            }
+        }
+    }
+
+    @discardableResult
+    func createPlaylist(name: String) throws -> PlaylistRecord {
+        let trimmed = try Self.validated(name)
+        return try database.write { db in
+            try ensureNameAvailable(db: db, name: trimmed, excluding: nil)
+            let sql = "INSERT INTO playlists (name, is_system) VALUES (?, 0);"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, trimmed, -1, Self.sqliteTransient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+            return PlaylistRecord(id: sqlite3_last_insert_rowid(db), name: trimmed, isSystem: false)
+        }
+    }
+
+    func renamePlaylist(id: Int64, name: String) throws {
+        guard id != MasterPlaylist.id else {
+            throw PlaylistRepositoryError.systemPlaylistProtected
+        }
+        let trimmed = try Self.validated(name)
+        try database.write { db in
+            try ensureNameAvailable(db: db, name: trimmed, excluding: id)
+            let sql = "UPDATE playlists SET name = ? WHERE id = ? AND is_system = 0;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, trimmed, -1, Self.sqliteTransient)
+            sqlite3_bind_int64(statement, 2, id)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
+    /// 只删列表；playlist_tracks 靠 CASCADE 清掉，tracks 不动。
+    func deletePlaylist(id: Int64) throws {
+        guard id != MasterPlaylist.id else {
+            throw PlaylistRepositoryError.systemPlaylistProtected
+        }
+        try database.write { db in
+            let sql = "DELETE FROM playlists WHERE id = ? AND is_system = 0;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, id)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
+    /// 已在列表里就什么都不做；新加的排在末尾。
+    func addTrack(trackId: Int64, toPlaylist playlistId: Int64) throws {
+        let now = Date().timeIntervalSince1970
+        try database.write { db in
+            try ensureInPlaylist(db: db, playlistId: playlistId, trackId: trackId, addedAt: now)
+        }
+    }
+
+    func removeTrack(trackId: Int64, fromPlaylist playlistId: Int64) throws {
+        try database.write { db in
+            let sql = "DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, playlistId)
+            sqlite3_bind_int64(statement, 2, trackId)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
+    /// 某首歌所在的全部列表 id（含系统列表），右键菜单打勾用。
+    func playlistIds(containing trackId: Int64) throws -> Set<Int64> {
+        try database.read { db in
+            let sql = "SELECT playlist_id FROM playlist_tracks WHERE track_id = ?;"
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, trackId)
+            var ids = Set<Int64>()
+            while sqlite3_step(statement) == SQLITE_ROW {
+                ids.insert(sqlite3_column_int64(statement, 0))
+            }
+            return ids
+        }
+    }
+
+    // MARK: sync 引擎共享
+
     func ensureInMasterPlaylist(db: OpaquePointer, trackId: Int64, addedAt: TimeInterval) throws {
+        try ensureInPlaylist(db: db, playlistId: MasterPlaylist.id, trackId: trackId, addedAt: addedAt)
+    }
+
+    private func ensureInPlaylist(db: OpaquePointer, playlistId: Int64, trackId: Int64, addedAt: TimeInterval) throws {
         let checkSQL = """
         SELECT 1 FROM playlist_tracks
         WHERE playlist_id = ? AND track_id = ?
@@ -96,7 +240,7 @@ final class PlaylistRepository {
         """
         let check = try database.prepare(db, sql: checkSQL)
         defer { sqlite3_finalize(check) }
-        sqlite3_bind_int64(check, 1, MasterPlaylist.id)
+        sqlite3_bind_int64(check, 1, playlistId)
         sqlite3_bind_int64(check, 2, trackId)
         if sqlite3_step(check) == SQLITE_ROW {
             return
@@ -107,7 +251,7 @@ final class PlaylistRepository {
         """
         let maxOrder = try database.prepare(db, sql: maxOrderSQL)
         defer { sqlite3_finalize(maxOrder) }
-        sqlite3_bind_int64(maxOrder, 1, MasterPlaylist.id)
+        sqlite3_bind_int64(maxOrder, 1, playlistId)
         var nextOrder: Int64 = 1
         if sqlite3_step(maxOrder) == SQLITE_ROW {
             nextOrder = sqlite3_column_int64(maxOrder, 0) + 1
@@ -119,7 +263,7 @@ final class PlaylistRepository {
         """
         let insert = try database.prepare(db, sql: insertSQL)
         defer { sqlite3_finalize(insert) }
-        sqlite3_bind_int64(insert, 1, MasterPlaylist.id)
+        sqlite3_bind_int64(insert, 1, playlistId)
         sqlite3_bind_int64(insert, 2, trackId)
         sqlite3_bind_double(insert, 3, addedAt)
         sqlite3_bind_int64(insert, 4, nextOrder)
@@ -181,6 +325,26 @@ final class PlaylistRepository {
             guard sqlite3_step(update) == SQLITE_DONE else {
                 throw AppDatabaseError.stepFailed(database.errorMessage(db))
             }
+        }
+    }
+
+    // MARK: 助手
+
+    private static func validated(_ name: String) throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw PlaylistRepositoryError.emptyName
+        }
+        return trimmed
+    }
+
+    private func ensureNameAvailable(db: OpaquePointer, name: String, excluding excludedId: Int64?) throws {
+        let sql = "SELECT id FROM playlists WHERE name = ? COLLATE NOCASE LIMIT 1;"
+        let statement = try database.prepare(db, sql: sql)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_text(statement, 1, name, -1, Self.sqliteTransient)
+        if sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_int64(statement, 0) != excludedId {
+            throw PlaylistRepositoryError.duplicateName(name)
         }
     }
 

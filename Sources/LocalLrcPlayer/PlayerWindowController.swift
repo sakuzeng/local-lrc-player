@@ -37,6 +37,11 @@ final class PlayerWindowController: NSWindowController {
     var isApplyingProgrammaticSliderUpdate = false
     var playbackMode: PlaybackMode = .sequential
     var shuffleHistory: [Int] = []
+    /// 「接下来播放」队列，内存态不持久化；见 PlayerWindowController_Queue。
+    var playQueue: [MusicTrack] = []
+    /// 当前查看的播放列表（持久化在 player_state，启动时恢复）；见 PlayerWindowController_Playlists。
+    var currentPlaylistId: Int64 = MasterPlaylist.id
+    var currentPlaylistName = "全部"
     var nowPlayingArtworkTrackURL: URL?
     var artworkDownloadAttemptedTrackIds: Set<Int64> = []
     // 播放区信息的控制器侧副本，供菜单栏卡片取用（layout 只把它们存进私有子视图）。
@@ -216,6 +221,8 @@ final class PlayerWindowController: NSWindowController {
         layout.playbackModeButton.action = #selector(cyclePlaybackMode)
         layout.locatePlayingButton.target = self
         layout.locatePlayingButton.action = #selector(locatePlayingTrack)
+        layout.playlistMenuButton.target = self
+        layout.playlistMenuButton.action = #selector(showPlaylistMenu(_:))
         layout.immersiveEnterButton.target = self
         layout.immersiveEnterButton.action = #selector(toggleImmersiveMode)
         layout.immersiveExitButton.target = self
@@ -246,6 +253,18 @@ final class PlayerWindowController: NSWindowController {
             self?.resignSearchFieldFocus()
             self?.resetShuffleHistory(for: row)
             self?.playTrack(at: row)
+        }
+        trackListDataSource.onPlayNextRequested = { [weak self] row in
+            self?.enqueue(trackAt: row, insertion: .next)
+        }
+        trackListDataSource.onPlayLaterRequested = { [weak self] row in
+            self?.enqueue(trackAt: row, insertion: .later)
+        }
+        trackListDataSource.onClearQueueRequested = { [weak self] in
+            self?.clearPlayQueue()
+        }
+        trackListDataSource.onContextMenuNeeded = { [weak self] menu, row in
+            self?.appendPlaylistItems(to: menu, forRow: row)
         }
 
         layout.lyricsView.onMouseDown = { [weak self] in
@@ -325,9 +344,11 @@ final class PlayerWindowController: NSWindowController {
         layout.refreshEmptyStates(
             hasLibraries: hasLibrary,
             trackCount: tracks.count,
-            searchKeyword: searchKeyword
+            searchKeyword: searchKeyword,
+            emptyPlaylistName: isViewingMasterPlaylist ? nil : currentPlaylistName
         )
-        layout.updateListHeader(trackCount: tracks.count)
+        layout.updateListHeader(trackCount: tracks.count, playlistName: isViewingMasterPlaylist ? nil : currentPlaylistName)
+        layout.playlistMenuButton.isEnabled = hasLibrary
         windowToolbar?.updateEnabledState(hasLibrary: hasLibrary)
         layout.playButton.isEnabled = hasTracks
         layout.previousButton.isEnabled = hasTracks

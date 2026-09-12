@@ -7,6 +7,8 @@ struct PlayerState {
     let lastPosition: TimeInterval
     let playbackMode: PlaybackMode
     let volume: Double
+    /// 上次查看的播放列表（v8）；列表已被删时由调用方回退到「全部」。
+    let currentPlaylistId: Int64
 }
 
 struct SavedWindowFrame: Equatable {
@@ -37,7 +39,7 @@ final class PlayerStateRepository {
     func playbackState() throws -> PlayerState {
         try database.read { db in
             let sql = """
-            SELECT last_track_id, last_position, playback_mode, volume
+            SELECT last_track_id, last_position, playback_mode, volume, current_playlist_id
             FROM player_state
             WHERE id = 1
             LIMIT 1;
@@ -45,7 +47,13 @@ final class PlayerStateRepository {
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
             guard sqlite3_step(statement) == SQLITE_ROW else {
-                return PlayerState(lastTrackId: nil, lastPosition: 0, playbackMode: .sequential, volume: 1)
+                return PlayerState(
+                    lastTrackId: nil,
+                    lastPosition: 0,
+                    playbackMode: .sequential,
+                    volume: 1,
+                    currentPlaylistId: MasterPlaylist.id
+                )
             }
             let lastTrackId = sqlite3_column_type(statement, 0) == SQLITE_NULL
                 ? nil
@@ -56,11 +64,15 @@ final class PlayerStateRepository {
             let volume = sqlite3_column_type(statement, 3) == SQLITE_NULL
                 ? 1
                 : sqlite3_column_double(statement, 3)
+            let playlistId = sqlite3_column_type(statement, 4) == SQLITE_NULL
+                ? MasterPlaylist.id
+                : sqlite3_column_int64(statement, 4)
             return PlayerState(
                 lastTrackId: lastTrackId,
                 lastPosition: sqlite3_column_double(statement, 1),
                 playbackMode: PlaybackMode(rawValue: modeRaw) ?? .sequential,
-                volume: min(max(volume, 0), 1)
+                volume: min(max(volume, 0), 1),
+                currentPlaylistId: playlistId
             )
         }
     }
@@ -123,6 +135,22 @@ final class PlayerStateRepository {
             let statement = try database.prepare(db, sql: sql)
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, mode.rawValue, -1, Self.sqliteTransient)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
+    func updateCurrentPlaylist(id: Int64) throws {
+        try database.write { db in
+            let sql = """
+            UPDATE player_state
+            SET current_playlist_id = ?
+            WHERE id = 1;
+            """
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int64(statement, 1, id)
             guard sqlite3_step(statement) == SQLITE_DONE else {
                 throw AppDatabaseError.stepFailed(database.errorMessage(db))
             }

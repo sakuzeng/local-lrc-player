@@ -14,6 +14,7 @@ final class PlayerWindowLayout {
     let nextButton = NSButton(title: "", target: nil, action: nil)
     let playbackModeButton = NSButton(title: "", target: nil, action: nil)
     let locatePlayingButton = NSButton(title: "", target: nil, action: nil)
+    let playlistMenuButton = NSButton(title: "", target: nil, action: nil)
     let immersiveEnterButton = NSButton(title: "", target: nil, action: nil)
     let progressSlider = SeekSlider(value: 0, minValue: 0, maxValue: 1, target: nil, action: nil)
     let timeLabel = NSTextField(labelWithString: "00:00 / 00:00")
@@ -83,7 +84,7 @@ final class PlayerWindowLayout {
         ])
     }
 
-    func refreshEmptyStates(hasLibraries: Bool, trackCount: Int, searchKeyword: String) {
+    func refreshEmptyStates(hasLibraries: Bool, trackCount: Int, searchKeyword: String, emptyPlaylistName: String? = nil) {
         if !hasLibraries {
             trackListEmptyState.configure(
                 symbolName: "folder.badge.plus",
@@ -96,6 +97,17 @@ final class PlayerWindowLayout {
         }
 
         if trackCount == 0 {
+            if searchKeyword.isEmpty, let emptyPlaylistName {
+                // 自建列表空着不是「没音乐」，顶栏要留着让人切回去。
+                trackListEmptyState.configure(
+                    symbolName: "music.note.list",
+                    title: "「\(emptyPlaylistName)」还没有歌曲",
+                    subtitle: "在「全部」里右键歌曲 → 加入播放列表"
+                )
+                trackListEmptyState.isHidden = false
+                listHeaderBar.isHidden = false
+                return
+            }
             if searchKeyword.isEmpty {
                 trackListEmptyState.configure(
                     symbolName: "music.note.list",
@@ -118,12 +130,10 @@ final class PlayerWindowLayout {
         listHeaderBar.isHidden = false
     }
 
-    func updateListHeader(trackCount: Int) {
-        if trackCount > 0 {
-            listTitleLabel.stringValue = "歌曲 · \(trackCount)"
-        } else {
-            listTitleLabel.stringValue = "歌曲"
-        }
+    /// 「全部」时沿用「歌曲 · N」，自建列表显示列表名。
+    func updateListHeader(trackCount: Int, playlistName: String? = nil) {
+        let name = playlistName ?? "歌曲"
+        listTitleLabel.stringValue = trackCount > 0 ? "\(name) · \(trackCount)" : name
     }
 
     private func setup(in contentView: NSView) {
@@ -617,6 +627,7 @@ final class PlayerWindowLayout {
         listNavigationStack.orientation = .horizontal
         listNavigationStack.alignment = .centerY
         listNavigationStack.spacing = 4
+        listNavigationStack.addArrangedSubview(playlistMenuButton)
         listNavigationStack.addArrangedSubview(locatePlayingButton)
         listNavigationStack.addArrangedSubview(immersiveEnterButton)
 
@@ -758,6 +769,14 @@ final class PlayerWindowLayout {
         locatePlayingButton.contentTintColor = .secondaryLabelColor
         locatePlayingButton.toolTip = "定位正在播放的歌曲"
         locatePlayingButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        playlistMenuButton.image = Self.symbolImage("music.note.list", pointSize: 14, weight: .semibold)
+        playlistMenuButton.imagePosition = .imageOnly
+        playlistMenuButton.isBordered = false
+        playlistMenuButton.bezelStyle = .regularSquare
+        playlistMenuButton.contentTintColor = .secondaryLabelColor
+        playlistMenuButton.toolTip = "播放列表"
+        playlistMenuButton.setContentHuggingPriority(.required, for: .horizontal)
 
         immersiveEnterButton.image = Self.symbolImage("arrow.up.left.and.arrow.down.right", pointSize: 13, weight: .semibold)
         immersiveEnterButton.imagePosition = .imageOnly

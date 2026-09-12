@@ -15,7 +15,7 @@
 - ~~音乐库自动感知变化~~（2026-09-12 完成：`LibraryFolderWatcher` 目录级 DispatchSource + 后台增量 sync）。
 - ~~UI 回归测试 + LrcParser 单测~~（2026-09-13 完成：`Tests/RunDatabaseTests/UILayoutTests.swift`、`LrcParserTests.swift`）。
 - ~~日志~~（2026-09-13 完成：`AppLog` + 帮助菜单「导出诊断信息…」，`DiagnosticsReport`）。
-- 播放队列与自建播放列表：先做「下一首播放」轻量队列，再做用户自建列表（`playlists` 表已在，UI 只有「全部」）。
+- ~~播放队列与自建播放列表~~（2026-09-13 完成：队列 `PlayerWindowController_Queue`，自建列表 `PlayerWindowController_Playlists` + `PlaylistRepository`）。后续可做：列表内拖拽排序、队列侧栏。
 - 无障碍：`SeekSlider`、卡片按钮、菜单栏状态项等自绘控件补 accessibility label 与键盘操作。
 - 代码结构：把播放态抽成独立 model，窗口、菜单栏卡片、沉浸模式都订阅它，
   不再绕回窗口控制器取数据；顺手删掉遗留的 `MenuBarLyricsView`。
@@ -83,7 +83,7 @@
 
 ## Technical Improvements
 
-- 自定义播放列表 UI（系统「全部」列表已实现；用户自建列表仍待做；`listHeaderBar` 左侧标题预留扩展）。
+- ~~自定义播放列表 UI~~（2026-09-13 完成）。
 - ~~为 `LrcParser` 增加单元测试。~~（2026-09-13 完成）
 - ~~为 `MusicLibrary` / `TrackRepository` 增加扫描与增量 sync 测试。~~（`test.sh` 已覆盖）
 - ~~增加日志输出，方便排查播放失败和歌词匹配失败。~~（2026-09-13 完成）

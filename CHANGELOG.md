@@ -6,6 +6,23 @@
 
 ### Added
 
+- 自建播放列表:列表顶栏新增列表按钮,弹出菜单在「全部」与自建列表间切换,并可新建 / 重命名 / 删除
+  (「全部」是系统列表,不能改名删除);曲目行右键新增「加入播放列表 ▸」(按成员关系打勾,再点即移出,
+  含「新建播放列表并加入…」),查看自建列表时另有「从当前列表移除」;文件菜单「新建播放列表…」(⌘N)。
+  顶栏标题在自建列表时显示列表名,空列表有专门的空状态且顶栏保留以便切回。搜索和播放队列都在当前列表内生效。
+  数据落既有的 `playlists` / `playlist_tracks`,无 schema 变更:`PlaylistRepository` 把总列表的查询与入列
+  泛化为按 playlistId,新增 allPlaylists / create / rename / delete / addTrack / removeTrack / playlistIds(containing:)。
+  当前列表记在 `player_state.current_playlist_id`(schema v8),重启后回到上次的列表,列表已删则回「全部」。
+  `UserPlaylistRepositoryTests` 覆盖增删改查、去重、系统列表保护、
+  曲目消失后自动退出自建列表。
+
+- 播放队列第一期「接下来播放」:曲目行右键或「播放」菜单可把选中歌曲「下一首播放」(插队首)或
+  「稍后播放」(追加队尾),另有「清空播放队列」。按「下一首」以及顺序/随机模式自动播完时优先出队;
+  单曲循环自动播完仍循环本曲,只有手动「下一首」才走队列;随机模式下出队前照常记 shuffle 历史。
+  出队按 id 再按路径在当前列表里找,找不到的(被搜索过滤、已删除)先跳过留在队列里。
+  队列只在内存,退出即空;列表行副标题末尾显示「队列 N」,状态栏有临时提示。
+  `PlayerWindowController_Queue`;`firstPlayable` 抽成纯函数并有 `PlayQueueTests`。
+
 - 结构化日志与诊断导出:新增 `AppLog`(`os.Logger`,subsystem 为 bundle id,按 app / playback / library /
   lyrics / network / menubar / database 分 category),在既有失败分支旁落日志,不改行为:播放准备失败、
   歌词读取/解析失败、歌词源搜索与候选下载失败、未配置 Cookie、音乐库同步结果与失败、目录监听失败、

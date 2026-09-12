@@ -399,6 +399,14 @@ extension PlayerWindowController {
         }
 
         let current = currentTrackIndex ?? trackListDataSource.indexOfSelectedTrack() ?? 0
+        // 队列优先；随机模式下照常记历史，「上一首」还能回去。
+        if let queued = dequeueNextPlayableIndex() {
+            if playbackMode == .shuffle {
+                appendShuffleHistory(current)
+            }
+            playTrack(at: queued)
+            return
+        }
         switch playbackMode {
         case .sequential, .repeatOne:
             playTrack(at: min(current + 1, tracks.count - 1))
@@ -412,6 +420,15 @@ extension PlayerWindowController {
         flushPendingMilestone()
 
         guard let currentTrackIndex else {
+            return
+        }
+
+        // 单曲循环是用户明确要的「反复听这首」，队列等它；其余模式播完先出队。
+        if playbackMode != .repeatOne, let queued = dequeueNextPlayableIndex() {
+            if playbackMode == .shuffle {
+                appendShuffleHistory(currentTrackIndex)
+            }
+            playTrack(at: queued)
             return
         }
 

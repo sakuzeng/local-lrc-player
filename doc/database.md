@@ -8,7 +8,7 @@ Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘�
 |---|---|
 | 引擎 | SQLite 3（系统 `-lsqlite3`） |
 | 文件路径 | `~/Library/Application Support/LocalLrcPlayer/LocalLrcPlayer.sqlite` |
-| Schema 版本 | `PRAGMA user_version = 7`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量 + v5 播放里程碑 + v6 往年今日 + v7 外观） |
+| Schema 版本 | `PRAGMA user_version = 8`（v1 基线 + v2 窗口列 + v3 播放模式 + v4 音量 + v5 播放里程碑 + v6 往年今日 + v7 外观 + v8 当前播放列表） |
 | 外键 | 开启（`PRAGMA foreign_keys = ON`） |
 | 并发 | 单连接 + `DispatchQueue` 串行读写 |
 
@@ -157,7 +157,8 @@ erDiagram
 
 | 列 | 说明 |
 |---|---|
-| `id = 1`, `name = '全部'`, `is_system = 1` | 系统总列表（当前 UI 唯一使用） |
+| `id = 1`, `name = '全部'`, `is_system = 1` | 系统总列表，由 sync 维护（入列 + 重排），不能改名删除 |
+| `is_system = 0` 的其余行 | 用户自建列表：`createPlaylist` / `renamePlaylist` / `deletePlaylist`，名称去空白、不区分大小写唯一 |
 
 `playlist_tracks`
 
@@ -169,6 +170,9 @@ erDiagram
 | `sort_order` | INTEGER | NOT NULL | 列表排序 |
 
 索引：`idx_playlist_tracks_order (playlist_id, sort_order)`
+
+自建列表的 `sort_order` 是加入顺序（max + 1），`addTrack` 对已有成员不重复插入；`removeTrack` 只删该行。
+曲目本身被删（所有路径消失）时靠 `tracks` 的 CASCADE 自动从所有列表退出；删除自建列表靠 `playlists` 的 CASCADE 清 `playlist_tracks`，`tracks` 不动。
 
 ---
 
@@ -185,6 +189,7 @@ erDiagram
 | `window_height` | REAL | 主窗口高度 |
 | `playback_mode` | TEXT | 播放模式（v3；`sequential` / `repeatOne` / `shuffle`，默认 `sequential`） |
 | `volume` | REAL | 音量 0–1（v4；默认 1，读写时钳制到区间内） |
+| `current_playlist_id` | INTEGER | 上次查看的播放列表（v8；默认 1 即「全部」；启动时若该列表已删则回退到 1 并写回） |
 
 ---
 
@@ -246,7 +251,7 @@ DatabaseModels.swift        LibraryRecord / TrackRecord
 LibraryRepository.swift     registerLibrary、allLibraries
 TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
 LyricLogRepository.swift    logAttempt（写下载记录）、recentAttempts（诊断导出读最近记录，JOIN tracks 取文件名）
-PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
+PlaylistRepository.swift    按列表查曲目（总列表/自建）、ensureInMasterPlaylist、自建列表 CRUD 与成员增删
 PlayerStateRepository.swift player_state 读写（含主窗口 frame）
 AppSettingsRepository.swift app_settings 读写（菜单栏歌词设置）
 PlayHistoryRepository.swift play_history 记录/计数/首播时间
@@ -265,7 +270,7 @@ migrate → v1
 LibraryRepository.allLibraries()
 TrackRepository.syncAll(libraries)
 PlaylistRepository.masterPlaylistTracks()
-PlayerStateRepository.playbackState() → restoreLastSelection
+PlayerStateRepository.playbackState() → 先按 current_playlist_id 站到上次的列表，再 restoreLastSelection
 ```
 
 ### 2. 用户选择文件夹
@@ -353,6 +358,6 @@ rm ~/Library/Application\ Support/LocalLrcPlayer/LocalLrcPlayer.sqlite
 
 ## 后续扩展（ROADMAP）
 
-- 用户自定义 `playlists`（非 system）
+- ~~用户自定义 `playlists`（非 system）~~（2026-09-13 完成）
 - FTS5 全文搜索
 - ~~库管理 UI（从总列表移除某文件夹）~~（已在设置窗口实现）

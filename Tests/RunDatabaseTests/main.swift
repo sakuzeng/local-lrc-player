@@ -545,6 +545,8 @@ final class PlayerStateRepositoryTests {
         try runIsolated { try self.testUpdatePlaybackModePersists() }
         try runIsolated { try self.testDefaultVolumeAfterMigration() }
         try runIsolated { try self.testUpdateVolumePersistsAndClamps() }
+        try runIsolated { try self.testDefaultCurrentPlaylistAfterMigration() }
+        try runIsolated { try self.testUpdateCurrentPlaylistPersists() }
     }
 
     private func runIsolated(_ work: () throws -> Void) throws {
@@ -592,6 +594,18 @@ final class PlayerStateRepositoryTests {
         try assertEqual(state.volume, 1)
     }
 
+    private func testDefaultCurrentPlaylistAfterMigration() throws {
+        let state = try repository.playbackState()
+        try assertEqual(state.currentPlaylistId, MasterPlaylist.id)
+    }
+
+    private func testUpdateCurrentPlaylistPersists() throws {
+        try repository.updateCurrentPlaylist(id: 42)
+        try assertEqual(try repository.playbackState().currentPlaylistId, 42)
+        try repository.updateCurrentPlaylist(id: MasterPlaylist.id)
+        try assertEqual(try repository.playbackState().currentPlaylistId, MasterPlaylist.id)
+    }
+
     private func testUpdateVolumePersistsAndClamps() throws {
         try repository.updateVolume(0.35)
         var state = try repository.playbackState()
@@ -609,8 +623,10 @@ do {
     try AppSettingsRepositoryTests().runAll()
     try PlayHistoryRepositoryTests().runAll()
     try PlayerStateRepositoryTests().runAll()
+    try UserPlaylistRepositoryTests().runAll()
     try MenuBarLyricsMaxWidthTests().runAll()
     try LrcParserTests().runAll()
+    try PlayQueueTests().runAll()
     try UILayoutTests().runAll()
     print("All tests passed.")
 } catch {

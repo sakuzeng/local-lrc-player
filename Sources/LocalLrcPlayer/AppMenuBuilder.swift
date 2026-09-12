@@ -69,6 +69,13 @@ enum AppMenuBuilder {
         ))
         fileMenu.addItem(.separator())
         fileMenu.addItem(menuItem(
+            title: "新建播放列表…",
+            action: #selector(PlayerWindowController.createPlaylistFromMenu),
+            keyEquivalent: "n",
+            target: playerWindowController
+        ))
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(menuItem(
             title: "关闭窗口",
             action: #selector(NSWindow.performClose(_:)),
             keyEquivalent: "w",
@@ -116,6 +123,25 @@ enum AppMenuBuilder {
             title: "下一首",
             action: #selector(PlayerWindowController.playNextFromMenu),
             keyEquivalent: "]",
+            target: playerWindowController
+        ))
+        playbackMenu.addItem(.separator())
+        playbackMenu.addItem(menuItem(
+            title: "下一首播放选中歌曲",
+            action: #selector(PlayerWindowController.playSelectedNextFromMenu),
+            keyEquivalent: "",
+            target: playerWindowController
+        ))
+        playbackMenu.addItem(menuItem(
+            title: "稍后播放选中歌曲",
+            action: #selector(PlayerWindowController.playSelectedLaterFromMenu),
+            keyEquivalent: "",
+            target: playerWindowController
+        ))
+        playbackMenu.addItem(menuItem(
+            title: "清空播放队列",
+            action: #selector(PlayerWindowController.clearPlayQueueFromMenu),
+            keyEquivalent: "",
             target: playerWindowController
         ))
 

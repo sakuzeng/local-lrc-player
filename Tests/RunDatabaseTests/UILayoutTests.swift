@@ -148,6 +148,12 @@ struct UILayoutTests {
         let noLyric = try cell(dataSource, tableView, column, row: 2, height: rowHeight)
         try assertEqual(noLyric.subtitle.stringValue, "无歌词")
 
+        // 队列徽标接在副标题末尾；清掉后恢复原文。
+        dataSource.queuedPositions = [dataSource.tracks[0].audioURL.standardizedFileURL.path: 2]
+        try assertEqual(try cell(dataSource, tableView, column, row: 0, height: rowHeight).subtitle.stringValue, "某人 · 专辑 · 队列 2")
+        dataSource.queuedPositions = [:]
+        try assertEqual(try cell(dataSource, tableView, column, row: 0, height: rowHeight).subtitle.stringValue, "某人 · 专辑")
+
         // 双行排版：标题距顶 7pt、左 10pt，副标题紧贴标题下 1pt。
         // 约束作用在 alignment rect 上，label 的 frame 比它每边多 2pt 内边距，要换算后再比。
         let titleFrame = playing.title.alignmentRect(forFrame: playing.title.frame)

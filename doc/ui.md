@@ -121,9 +121,9 @@
 
 实现：`PlayerWindowLayout.configureListContainer()`。
 
-- 左侧 `listTitleLabel`：默认 `歌曲 · {曲目数}`；无曲目时隐藏顶栏。日后可替换为当前播放列表名称。
-- 右侧 `listNavigationStack`：水平 `NSStackView`，当前含 `locatePlayingButton`（`scope`）。
-- 空状态（无库 / 无曲 / 搜索无结果）时 `listHeaderBar.isHidden = true`。
+- 左侧 `listTitleLabel`：「全部」时 `歌曲 · {曲目数}`，自建列表时 `{列表名} · {曲目数}`（`updateListHeader(trackCount:playlistName:)`）。
+- 右侧 `listNavigationStack`：水平 `NSStackView`，依次为 `playlistMenuButton`（`music.note.list`，点击弹播放列表菜单）、`locatePlayingButton`（`scope`）、沉浸模式按钮。
+- 空状态（无库 / 无曲 / 搜索无结果）时 `listHeaderBar.isHidden = true`；例外是自建列表为空：显示「『X』还没有歌曲」并保留顶栏，否则没法切回「全部」。
 
 ### 定位正在播放
 
@@ -132,6 +132,18 @@
 - 启用条件：`playingTrackURL != nil`（`updateControlState`）。
 
 扩展方式：在 `listNavigationStack` 中 `addArrangedSubview` 新按钮即可，无需改工具栏。
+
+### 播放列表（`PlayerWindowController_Playlists`）
+
+- 当前列表在控制器里（`currentPlaylistId` / `currentPlaylistName`）并持久化到 `player_state.current_playlist_id`；启动时 `restoreCurrentPlaylistSelection` 先站到上次的列表再恢复上次曲目，列表已删则回「全部」。`reloadMasterPlaylist` 按它查，搜索和队列都在当前列表内生效。
+- 顶栏按钮菜单：所有列表（当前项打勾）→ 新建播放列表… → 自建列表时再给 重命名 / 删除。名字用 `NSAlert` 加 `NSTextField` accessory 输入。
+- 曲目行右键在队列项之后由 `onContextMenuNeeded` 交给控制器追加：「加入播放列表 ▸」（每个自建列表一项，按成员关系打勾，点了切换；末尾「新建播放列表并加入…」），自建列表视图下再加「从『X』移除」。
+- 切到不含正在播放曲目的列表时 `currentTrackIndex` 清空、播放继续，下一首/自动切歌从新列表算。
+
+### 曲目行右键菜单与播放队列
+
+- `TrackListDataSource` 给表格挂了一个 `NSMenu`，内容在 `menuNeedsUpdate` 里按 `clickedRow` 现拼（行号放进 `tag`，菜单关掉后 `clickedRow` 会失效）：「下一首播放」「稍后播放」，队列非空时再加「清空播放队列（N 首）」。
+- 队列本体在 `PlayerWindowController_Queue`（内存态 `playQueue`），数据源只拿 `queuedPositions`（标准化路径 → 位次）在副标题末尾画「队列 N」。
 
 ---
 

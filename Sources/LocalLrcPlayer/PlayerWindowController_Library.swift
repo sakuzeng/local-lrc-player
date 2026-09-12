@@ -17,6 +17,7 @@ extension PlayerWindowController {
             for library in libraries {
                 LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
             }
+            restoreCurrentPlaylistSelection()
             reloadMasterPlaylist(restoreLastSession: restoreLastSession, preserveTrackURL: nil)
             layout.statusLabel.stringValue = statusSummary(
                 total: summary.total,
@@ -90,7 +91,7 @@ extension PlayerWindowController {
     func reloadMasterPlaylist(restoreLastSession: Bool, preserveTrackURL: URL?) {
         do {
             let keyword = searchKeyword.isEmpty ? nil : searchKeyword
-            let records = try trackRepository.masterPlaylistTracks(keyword: keyword)
+            let records = try trackRepository.playlistRepository.tracks(inPlaylist: currentPlaylistId, keyword: keyword)
             tracks = records.map { $0.asMusicTrack() }
             updatePlayingTrackInList(preferredURL: preserveTrackURL, scrollToVisible: true)
             pruneShuffleHistory()

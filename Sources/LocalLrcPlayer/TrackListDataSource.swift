@@ -20,6 +20,18 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
 
     var onDoubleClick: ((Int) -> Void)?
     var onSelectionChanged: ((Int?) -> Void)?
+    var onPlayNextRequested: ((Int) -> Void)?
+    var onPlayLaterRequested: ((Int) -> Void)?
+    var onClearQueueRequested: (() -> Void)?
+    /// 右键菜单在队列项之后交给控制器追加（播放列表相关项需要查库）。
+    var onContextMenuNeeded: ((NSMenu, Int) -> Void)?
+
+    /// 标准化路径 → 队列位次（1 起），由控制器随队列变化整体重设；副标题末尾显示「队列 N」。
+    var queuedPositions: [String: Int] = [:] {
+        didSet {
+            refreshRowAppearance()
+        }
+    }
 
     private weak var tableView: NSTableView?
     private var suppressSelectionCallback = false
@@ -52,6 +64,11 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         if let trackTable = tableView as? TrackTableView {
             trackTable.hoverCoordinator = self
         }
+
+        // 右键菜单：内容按点中的行在 menuNeedsUpdate 里现拼。
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        tableView.menu = contextMenu
         tableView.window?.acceptsMouseMovedEvents = true
 
         if let clipView = tableView.enclosingScrollView?.contentView {
@@ -253,7 +270,8 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
         cell.configure(
             track: track,
             isPlaying: isPlaying,
-            isSelected: isSelected
+            isSelected: isSelected,
+            queuePosition: queuedPositions[track.audioURL.standardizedFileURL.path]
         )
         return cell
     }
@@ -296,6 +314,47 @@ final class TrackListDataSource: NSObject, NSTableViewDataSource, NSTableViewDel
     }
 }
 
+// MARK: - 右键菜单
+
+extension TrackListDataSource: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let clickedRow = tableView?.clickedRow ?? -1
+        if tracks.indices.contains(clickedRow) {
+            // 行号放 tag 里带过去：菜单关掉后 clickedRow 会失效。
+            let next = NSMenuItem(title: "下一首播放", action: #selector(playNextClicked(_:)), keyEquivalent: "")
+            next.target = self
+            next.tag = clickedRow
+            menu.addItem(next)
+            let later = NSMenuItem(title: "稍后播放", action: #selector(playLaterClicked(_:)), keyEquivalent: "")
+            later.target = self
+            later.tag = clickedRow
+            menu.addItem(later)
+            onContextMenuNeeded?(menu, clickedRow)
+        }
+        if !queuedPositions.isEmpty {
+            if menu.numberOfItems > 0 {
+                menu.addItem(.separator())
+            }
+            let clear = NSMenuItem(title: "清空播放队列（\(queuedPositions.count) 首）", action: #selector(clearQueueClicked), keyEquivalent: "")
+            clear.target = self
+            menu.addItem(clear)
+        }
+    }
+
+    @objc private func playNextClicked(_ sender: NSMenuItem) {
+        onPlayNextRequested?(sender.tag)
+    }
+
+    @objc private func playLaterClicked(_ sender: NSMenuItem) {
+        onPlayLaterRequested?(sender.tag)
+    }
+
+    @objc private func clearQueueClicked() {
+        onClearQueueRequested?()
+    }
+}
+
 // MARK: - Cell
 
 private final class TrackTableCellView: NSView {
@@ -311,10 +370,14 @@ private final class TrackTableCellView: NSView {
         nil
     }
 
-    func configure(track: MusicTrack, isPlaying: Bool, isSelected: Bool) {
+    func configure(track: MusicTrack, isPlaying: Bool, isSelected: Bool, queuePosition: Int? = nil) {
         let parts = Self.displayParts(for: track)
         titleLabel.stringValue = parts.title
-        subtitleLabel.stringValue = parts.subtitle
+        if let queuePosition {
+            subtitleLabel.stringValue = parts.subtitle.isEmpty ? "队列 \(queuePosition)" : "\(parts.subtitle) · 队列 \(queuePosition)"
+        } else {
+            subtitleLabel.stringValue = parts.subtitle
+        }
         applyTextStyle(isPlaying: isPlaying, isSelected: isSelected, hasLyric: track.lyricURL != nil)
     }
 
