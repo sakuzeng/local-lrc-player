@@ -46,6 +46,7 @@ final class LibraryFolderWatcher {
     private func startLocked(path: String) {
         let descriptor = open(path, O_EVTONLY)
         guard descriptor >= 0 else {
+            AppLog.library.error("无法监听文件夹 \(path, privacy: .public)（errno \(errno, privacy: .public)）")
             return
         }
         let source = DispatchSource.makeFileSystemObjectSource(
@@ -60,6 +61,7 @@ final class LibraryFolderWatcher {
             // 目录本身没了（删除、改名、卷被拔掉）：fd 指向的 vnode 已失效，先撤掉，
             // 下次对齐监听集合时若目录回来了会重新开。
             if !source.data.intersection([.delete, .rename, .revoke]).isEmpty {
+                AppLog.library.notice("音乐文件夹被移走或卷已卸载，停止监听：\(path, privacy: .public)")
                 stopLocked(path: path)
             }
             scheduleNotifyLocked()

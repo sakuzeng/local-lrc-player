@@ -2,7 +2,31 @@
 
 本文件记录 Local LRC Player 的重要修改，方便后续开发时回看变更背景。
 
-## 2026-09-12
+## 2026-09-13
+
+### Added
+
+- 结构化日志与诊断导出:新增 `AppLog`(`os.Logger`,subsystem 为 bundle id,按 app / playback / library /
+  lyrics / network / menubar / database 分 category),在既有失败分支旁落日志,不改行为:播放准备失败、
+  歌词读取/解析失败、歌词源搜索与候选下载失败、未配置 Cookie、音乐库同步结果与失败、目录监听失败、
+  菜单栏状态项重建、数据库打开。Cookie 值永不进日志。少量关键事件(同步结果、启动、歌词保存)用 notice
+  持久化,`log show --predicate 'subsystem == "local.lrc.player.v2"'` 能查到;「开始播放」这类高频事件用 info,
+  只在内存短期保留。
+- 播放失败不再静默:`PlaybackController` 观察 `AVPlayerItem.status` 与 `AVPlayerItemFailedToPlayToEndTime`,
+  文件损坏或格式不支持时状态栏显示「播放失败:…」并把播放键摆回,系统「正在播放」同步更新。
+- 帮助 → 导出诊断信息…:`DiagnosticsReport` 把环境(版本、macOS、ffmpeg、数据库路径)、设置摘要、
+  各音乐文件夹的存在/可读/上次同步、播放态、菜单栏歌词状态、最近 30 条歌词下载记录
+  (`LyricLogRepository.recentAttempts`)和本进程的统一日志(`OSLogStore`,最多 400 条)拼成纯文本,
+  经 NSSavePanel 保存后在 Finder 里选中。
+
+- 测试补齐:`LrcParserTests`(时间戳格式、一行多时间戳、跳过元数据/空行、排序、同时刻多语言分组、
+  `activeLineIndex` 边界与组内偏好中文)和 `UILayoutTests`(离屏布局回归:菜单栏卡片在有/无歌手、
+  未播放等快照间复用切换后歌名块仍对着封面居中、空歌词行收起;歌词区当前行 26pt 粗体、邻行缩小、
+  当前行居中于可视区;曲目列表播放行 semibold、普通行 regular、双行标签位置)。
+  `test.sh` 改为编译 `Tests/RunDatabaseTests/` 下全部文件,`main.swift` 仍是唯一 runner。
+  UI 测试在进程内起 `NSApplication` 用离屏窗口做 Auto Layout,不需要真机;
+  断言优先复用同一实例做状态切换,因为新建视图往往是对的、复用后才会漂。
+
 
 ### Added
 

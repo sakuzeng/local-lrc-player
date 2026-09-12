@@ -199,6 +199,13 @@ enum AppMenuBuilder {
             target: AppDelegate.shared,
             modifierMask: [.command, .shift]
         ))
+        helpMenu.addItem(.separator())
+        helpMenu.addItem(menuItem(
+            title: "导出诊断信息…",
+            action: #selector(AppDelegate.exportDiagnostics),
+            keyEquivalent: "",
+            target: AppDelegate.shared
+        ))
 
         let item = NSMenuItem()
         item.title = "帮助"

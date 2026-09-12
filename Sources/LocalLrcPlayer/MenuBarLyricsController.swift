@@ -192,6 +192,13 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
         currentSettings
     }
 
+    /// 诊断导出用的一行摘要。
+    func diagnosticsSummary() -> String {
+        let installed = statusItem != nil
+        let hidden = installed && MenuBarVisibilityGuide.isStatusItemLikelyHidden(statusItem)
+        return "设置：\(currentSettings.menuBarLyricsEnabled ? "开" : "关")，状态项：\(installed ? "已创建" : "未创建")，疑似被系统隐藏：\(hidden ? "是" : "否")，当前文本：\(lastDisplayedText)"
+    }
+
     func makeSettingsMenu(delegate: NSMenuDelegate?) -> NSMenu {
         let menu = NSMenu()
         menu.delegate = delegate ?? self
@@ -460,6 +467,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             return
         }
         visibilityRecoveryAttempt += 1
+        AppLog.menuBar.notice("菜单栏歌词疑似不可见，第 \(self.visibilityRecoveryAttempt, privacy: .public) 次重建状态项")
 
         let savedText = lastDisplayedText
         disable()
@@ -699,6 +707,7 @@ final class MenuBarLyricsController: NSObject, NSMenuDelegate {
             reloadSettingsFromDatabase()
             playerWindowController?.syncMenuBarLyrics()
         } catch {
+            AppLog.menuBar.error("保存菜单栏歌词设置失败：\(error.localizedDescription, privacy: .public)")
             playerWindowController?.layout.statusLabel.stringValue = "保存菜单栏歌词设置失败：\(error.localizedDescription)"
         }
     }

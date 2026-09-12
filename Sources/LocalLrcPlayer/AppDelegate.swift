@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        AppLog.app.notice("App 启动，版本 \(version, privacy: .public)，macOS \(ProcessInfo.processInfo.operatingSystemVersionString, privacy: .public)")
         // 先应用外观再建窗口，避免启动瞬间闪一下系统默认外观。
         let appearance = ((try? AppSettingsRepository().settings()) ?? .defaults).appearance
         appearance.applyToApp()
@@ -67,6 +69,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func showAboutPanel() {
         NSApp.orderFrontStandardAboutPanel(nil)
+    }
+
+    /// 帮助 → 导出诊断信息：环境 / 设置 / 音乐库 / 播放态 / 最近歌词下载记录 / 本次运行日志，存成纯文本。
+    @objc func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = "导出诊断信息"
+        panel.nameFieldStringValue = DiagnosticsReport.suggestedFileName()
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return
+        }
+
+        let report = DiagnosticsReport.generate(
+            playerWindowController: playerWindowController,
+            menuBarLyricsController: menuBarLyricsController
+        )
+        do {
+            try report.write(to: url, atomically: true, encoding: .utf8)
+            AppLog.app.info("诊断信息已导出：\(url.lastPathComponent, privacy: .public)")
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            AppLog.app.error("导出诊断信息失败：\(error.localizedDescription, privacy: .public)")
+            let alert = NSAlert()
+            alert.messageText = "导出诊断信息失败"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     @objc func showHelp() {

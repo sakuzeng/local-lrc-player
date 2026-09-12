@@ -117,6 +117,7 @@ final class PlayerWindowController: NSWindowController {
             try libraryRepository.migrateLegacyLastFolderIfNeeded()
             bootstrapLibraries(restoreLastSession: true)
         } catch {
+            AppLog.database.fault("数据库初始化失败：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = "数据库初始化失败：\(error.localizedDescription)"
         }
 
@@ -259,6 +260,9 @@ final class PlayerWindowController: NSWindowController {
 
         playbackController.onPlaybackEnded = { [weak self] in
             self?.playerItemDidEnd()
+        }
+        playbackController.onPlaybackFailed = { [weak self] message in
+            self?.handlePlaybackFailure(message)
         }
     }
 

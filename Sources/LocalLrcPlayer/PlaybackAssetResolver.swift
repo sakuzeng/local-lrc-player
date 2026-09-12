@@ -1,7 +1,7 @@
 import Foundation
 
 enum PlaybackAssetResolver {
-    private static let ffmpegPath = "/opt/homebrew/bin/ffmpeg"
+    static let ffmpegPath = "/opt/homebrew/bin/ffmpeg"
 
     static func playbackURL(for track: MusicTrack) throws -> URL {
         guard track.audioURL.pathExtension.lowercased() == "flac" else {

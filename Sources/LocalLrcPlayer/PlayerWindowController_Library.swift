@@ -13,6 +13,7 @@ extension PlayerWindowController {
             LibraryBookmarkStore.activateLibraries(libraries)
             layout.statusLabel.stringValue = "正在同步音乐库…"
             let summary = try trackRepository.syncAll(libraries: libraries)
+            AppLog.library.notice("启动同步 \(libraries.count, privacy: .public) 个音乐库：共 \(summary.total, privacy: .public) 首，+\(summary.inserted, privacy: .public)/~\(summary.updated, privacy: .public)/-\(summary.removed, privacy: .public)，去重 \(summary.deduplicated, privacy: .public)")
             for library in libraries {
                 LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
             }
@@ -33,6 +34,7 @@ extension PlayerWindowController {
                 self?.presentOnThisDayMemoryIfAvailable()
             }
         } catch {
+            AppLog.library.error("启动同步失败：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = "数据库初始化失败：\(error.localizedDescription)"
         }
     }
@@ -48,6 +50,7 @@ extension PlayerWindowController {
             layout.statusLabel.stringValue = "正在同步音乐库…"
 
             let summary = try trackRepository.sync(libraryId: library.id, folderURL: library.url)
+            AppLog.library.notice("添加音乐库 \(library.path, privacy: .public)：共 \(summary.total, privacy: .public) 首，+\(summary.inserted, privacy: .public)，去重 \(summary.deduplicated, privacy: .public)")
             try libraryRepository.markScanned(libraryId: library.id)
             LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
 
@@ -75,6 +78,7 @@ extension PlayerWindowController {
 
             updateControlState()
         } catch {
+            AppLog.library.error("读取目录失败 \(library.path, privacy: .public)：\(error.localizedDescription, privacy: .public)")
             tracks = []
             trackListDataSource.tracks = []
             layout.statusLabel.stringValue = "读取目录失败：\(error.localizedDescription)"
@@ -105,6 +109,7 @@ extension PlayerWindowController {
                 layout.lyricsView.showPlaceholder("双击左侧歌曲开始播放")
             }
         } catch {
+            AppLog.library.error("读取歌曲列表失败：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = "读取歌曲列表失败：\(error.localizedDescription)"
         }
     }
@@ -174,6 +179,7 @@ extension PlayerWindowController {
             layout.statusLabel.stringValue = "正在刷新全部音乐库…"
             LibraryBookmarkStore.activateLibraries(libraries)
             let summary = try trackRepository.syncAll(libraries: libraries)
+            AppLog.library.notice("手动刷新 \(libraries.count, privacy: .public) 个音乐库：共 \(summary.total, privacy: .public) 首，+\(summary.inserted, privacy: .public)/~\(summary.updated, privacy: .public)/-\(summary.removed, privacy: .public)")
             for library in libraries {
                 try libraryRepository.markScanned(libraryId: library.id)
                 LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
@@ -188,6 +194,7 @@ extension PlayerWindowController {
                 deduplicated: summary.deduplicated
             )
         } catch {
+            AppLog.library.error("手动刷新失败：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = "刷新目录失败：\(error.localizedDescription)"
         }
     }

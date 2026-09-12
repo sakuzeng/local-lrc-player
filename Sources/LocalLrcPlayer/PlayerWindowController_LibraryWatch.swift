@@ -26,6 +26,7 @@ extension PlayerWindowController {
             return
         }
         isAutoSyncInProgress = true
+        AppLog.library.notice("目录变化触发自动同步（\(libraries.count, privacy: .public) 个音乐库）")
         showTransientStatus("检测到音乐文件夹变化，正在同步…", restoringAfter: 30)
         LibraryBookmarkStore.activateLibraries(libraries)
 
@@ -62,6 +63,7 @@ extension PlayerWindowController {
                 publishNowPlayingState()
             }
             let changes = summary.inserted + summary.updated + summary.removed + summary.deduplicated
+            AppLog.library.notice("自动同步完成：共 \(summary.total, privacy: .public) 首，+\(summary.inserted, privacy: .public)/~\(summary.updated, privacy: .public)/-\(summary.removed, privacy: .public)，去重 \(summary.deduplicated, privacy: .public)")
             showTransientStatus(
                 changes > 0
                     ? "文件夹有变化，已" + statusSummary(
@@ -78,6 +80,7 @@ extension PlayerWindowController {
             updateControlState()
             syncMenuBarLyrics()
         case .failure(let error):
+            AppLog.library.error("自动同步失败：\(error.localizedDescription, privacy: .public)")
             showTransientStatus("自动同步失败：\(error.localizedDescription)", restoringAfter: 6)
         }
 

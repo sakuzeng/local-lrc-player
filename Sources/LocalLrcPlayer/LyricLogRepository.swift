@@ -2,10 +2,58 @@ import Foundation
 import SQLite3
 
 final class LyricLogRepository {
+    struct AttemptRecord {
+        let createdAt: Date
+        let provider: LyricProvider
+        let fileName: String
+        let candidateName: String?
+        let score: Int?
+        let success: Bool
+        let errorMessage: String?
+    }
+
     private let database: AppDatabase
 
     init(database: AppDatabase = .shared) {
         self.database = database
+    }
+
+    /// 诊断导出用：最近的下载尝试，带曲目文件名，新的在前。
+    func recentAttempts(limit: Int) throws -> [AttemptRecord] {
+        try database.read { db in
+            let sql = """
+            SELECT l.created_at, l.provider, t.file_name, l.candidate_name, l.score, l.success, l.error_message
+            FROM lyric_download_log l
+            JOIN tracks t ON t.id = l.track_id
+            ORDER BY l.created_at DESC
+            LIMIT ?;
+            """
+            let statement = try database.prepare(db, sql: sql)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_int(statement, 1, Int32(limit))
+
+            var records: [AttemptRecord] = []
+            while sqlite3_step(statement) == SQLITE_ROW {
+                let provider = LyricProvider(rawValue: String(cString: sqlite3_column_text(statement, 1))) ?? .netEase
+                records.append(AttemptRecord(
+                    createdAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    provider: provider,
+                    fileName: String(cString: sqlite3_column_text(statement, 2)),
+                    candidateName: Self.optionalText(statement, 3),
+                    score: sqlite3_column_type(statement, 4) == SQLITE_NULL ? nil : Int(sqlite3_column_int(statement, 4)),
+                    success: sqlite3_column_int(statement, 5) != 0,
+                    errorMessage: Self.optionalText(statement, 6)
+                ))
+            }
+            return records
+        }
+    }
+
+    private static func optionalText(_ statement: OpaquePointer?, _ index: Int32) -> String? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL, let text = sqlite3_column_text(statement, index) else {
+            return nil
+        }
+        return String(cString: text)
     }
 
     func logAttempt(

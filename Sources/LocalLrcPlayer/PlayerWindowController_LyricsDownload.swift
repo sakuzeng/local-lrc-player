@@ -15,6 +15,7 @@ extension PlayerWindowController {
         do {
             missingTracks = try trackRepository.missingLyricTracksInMaster().map { $0.asMusicTrack() }
         } catch {
+            AppLog.lyrics.error("读取缺失歌词列表失败：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = "读取缺失歌词列表失败：\(error.localizedDescription)"
             return
         }
@@ -33,6 +34,7 @@ extension PlayerWindowController {
         guard index < missingTracks.count else {
             setLyricButtonsEnabled(true)
             refreshAllLibraries(preserveTrackURL: currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].audioURL : nil })
+            AppLog.lyrics.notice("补全缺失歌词完成：成功 \(successCount, privacy: .public)，失败 \(failureCount, privacy: .public)")
             layout.statusLabel.stringValue = "补全完成：成功 \(successCount)，失败 \(failureCount)"
             return
         }
@@ -68,10 +70,12 @@ extension PlayerWindowController {
 
             switch result {
             case .failure(let error):
+                AppLog.lyrics.error("歌词搜索失败 \(track.displayName, privacy: .public)：\(error.localizedDescription, privacy: .public)")
                 self.setLyricButtonsEnabled(true)
                 self.layout.statusLabel.stringValue = "歌词下载失败：\(error.localizedDescription)"
             case .success(let sections):
                 guard !sections.isEmpty else {
+                    AppLog.lyrics.notice("歌词搜索无候选：\(track.displayName, privacy: .public)")
                     self.setLyricButtonsEnabled(true)
                     self.layout.statusLabel.stringValue = "歌词下载失败：未找到候选结果"
                     return
@@ -94,11 +98,13 @@ extension PlayerWindowController {
                     switch saveResult {
                     case .failure(let error):
                         if !(error is LyricCandidateDialogError) {
+                            AppLog.lyrics.error("歌词保存失败 \(track.displayName, privacy: .public)：\(error.localizedDescription, privacy: .public)")
                             self.layout.statusLabel.stringValue = "歌词保存失败：\(error.localizedDescription)"
                         } else {
                             self.layout.statusLabel.stringValue = "已取消歌词下载"
                         }
                     case .success:
+                        AppLog.lyrics.notice("歌词已保存：\(track.displayName, privacy: .public)")
                         self.refreshAllLibraries(preserveTrackURL: track.audioURL)
                         self.layout.statusLabel.stringValue = "歌词已保存：\(track.displayName)"
                         if reloadCurrentTrack,

@@ -13,10 +13,8 @@
 
 - ~~媒体键与系统「正在播放」集成~~（2026-09-12 完成：`NowPlayingCenter`，控制中心 / F7-F9 / AirPods）。
 - ~~音乐库自动感知变化~~（2026-09-12 完成：`LibraryFolderWatcher` 目录级 DispatchSource + 后台增量 sync）。
-- UI 回归测试：把修卡片居中时用的离屏渲染 harness 收进 `Tests/`，对菜单栏卡片、歌词区、列表行
-  断言关键 frame，挡住「切换状态后布局跑偏」这类肉眼难发现的问题；同时补 `LrcParser` 单测。
-- 日志：引入 `os.Logger`，播放失败、歌词匹配失败、Cookie 失效落结构化日志，
-  菜单加「导出诊断信息」。
+- ~~UI 回归测试 + LrcParser 单测~~（2026-09-13 完成：`Tests/RunDatabaseTests/UILayoutTests.swift`、`LrcParserTests.swift`）。
+- ~~日志~~（2026-09-13 完成：`AppLog` + 帮助菜单「导出诊断信息…」，`DiagnosticsReport`）。
 - 播放队列与自建播放列表：先做「下一首播放」轻量队列，再做用户自建列表（`playlists` 表已在，UI 只有「全部」）。
 - 无障碍：`SeekSlider`、卡片按钮、菜单栏状态项等自绘控件补 accessibility label 与键盘操作。
 - 代码结构：把播放态抽成独立 model，窗口、菜单栏卡片、沉浸模式都订阅它，
@@ -86,9 +84,9 @@
 ## Technical Improvements
 
 - 自定义播放列表 UI（系统「全部」列表已实现；用户自建列表仍待做；`listHeaderBar` 左侧标题预留扩展）。
-- 为 `LrcParser` 增加单元测试。
+- ~~为 `LrcParser` 增加单元测试。~~（2026-09-13 完成）
 - ~~为 `MusicLibrary` / `TrackRepository` 增加扫描与增量 sync 测试。~~（`test.sh` 已覆盖）
-- 增加日志输出，方便排查播放失败和歌词匹配失败。
+- ~~增加日志输出，方便排查播放失败和歌词匹配失败。~~（2026-09-13 完成）
 - 将 FLAC 转码缓存改成后台任务，避免首次播放大文件时 UI 短暂卡住。
 - 曲目数量很大时（>5000）为 tracks 表增加 FTS5 全文索引。
 - `TrackMetadataReader` 改用 AVAsset 异步 load API，消除 macOS 13 弃用警告。

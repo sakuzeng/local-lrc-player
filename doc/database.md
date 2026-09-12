@@ -245,6 +245,7 @@ TrackContentHasher.swift    SHA256 流式 hash
 DatabaseModels.swift        LibraryRecord / TrackRecord
 LibraryRepository.swift     registerLibrary、allLibraries
 TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
+LyricLogRepository.swift    logAttempt（写下载记录）、recentAttempts（诊断导出读最近记录，JOIN tracks 取文件名）
 PlaylistRepository.swift    总列表查询、ensureInMasterPlaylist
 PlayerStateRepository.swift player_state 读写（含主窗口 frame）
 AppSettingsRepository.swift app_settings 读写（菜单栏歌词设置）

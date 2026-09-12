@@ -48,6 +48,7 @@ extension PlayerWindowController {
                 : "正在播放：\(track.displayName)"
             playbackURL = try PlaybackAssetResolver.playbackURL(for: track)
         } catch {
+            AppLog.playback.error("准备播放失败 \(track.displayName, privacy: .public)：\(error.localizedDescription, privacy: .public)")
             layout.statusLabel.stringValue = error.localizedDescription
             return
         }
@@ -230,6 +231,7 @@ extension PlayerWindowController {
                 let contents = try String(contentsOf: lyricURL, encoding: .utf16)
                 renderLyrics(contents, highlightAt: time)
             } catch {
+                AppLog.lyrics.error("歌词读取失败 \(lyricURL.lastPathComponent, privacy: .public)：\(error.localizedDescription, privacy: .public)")
                 lrcLines = []
                 layout.lyricsView.showPlaceholder("歌词读取失败")
                 syncMenuBarLyrics()
@@ -240,6 +242,8 @@ extension PlayerWindowController {
     func renderLyrics(_ contents: String, highlightAt time: TimeInterval? = nil) {
         lrcLines = LrcParser.parse(contents)
         if lrcLines.isEmpty {
+            let name = currentTrackIndex.flatMap { tracks.indices.contains($0) ? tracks[$0].displayName : nil } ?? "-"
+            AppLog.lyrics.notice("歌词文件为空或格式无法识别：\(name, privacy: .public)")
             layout.lyricsView.showPlaceholder("歌词文件为空或格式无法识别")
         } else {
             layout.lyricsView.render(lrcLines, scrollToTop: time == nil)
@@ -551,6 +555,14 @@ extension PlayerWindowController {
             layout.setPlayButtonShowsPause(true)
         }
         publishNowPlayingState(isPlaying: resumeAfterSeek ? true : nil)
+    }
+
+    /// AVPlayer 报错（文件损坏、格式不支持）：以前只会静默无声，这里把状态摆正并告诉用户。
+    func handlePlaybackFailure(_ message: String) {
+        layout.statusLabel.stringValue = "播放失败：\(message)"
+        layout.setPlayButtonShowsPause(false)
+        publishNowPlayingState()
+        syncMenuBarLyrics()
     }
 
     /// 点击歌词行跳到该行时间：已加载就 seek，未加载则记为恢复位置供下次播放。

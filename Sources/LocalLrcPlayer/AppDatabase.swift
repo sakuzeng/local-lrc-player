@@ -53,6 +53,7 @@ final class AppDatabase {
         }
         db = handle
         try migrate()
+        AppLog.database.notice("数据库已打开：\(self.fileURL.path, privacy: .public)，schema v\(Self.currentSchemaVersion, privacy: .public)")
     }
 
     deinit {

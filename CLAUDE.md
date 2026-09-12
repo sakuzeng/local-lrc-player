@@ -30,12 +30,15 @@ open build/LocalLrcPlayer.app
 
 测试是手写的 harness,不是 XCTest。`Tests/RunDatabaseTests/main.swift` 自己定义了
 `assertEqual` / `assertTrue`,文件末尾用 `do { ... } catch { exit(1) }` 作为 runner;
-`test.sh` 把所有源文件(去掉 `main.swift`)和这个测试文件一起编译成一个二进制再运行。
+同目录下 `LrcParserTests.swift`、`UILayoutTests.swift` 按主题拆分,只定义类型不含顶层语句。
+`test.sh` 把所有源文件(去掉 `main.swift`)和测试目录下全部文件一起编译成一个二进制再运行。
 没有单测运行器 —— 想只跑某一个测试,就把末尾 `do` 块里的其他调用注释掉。
 `Tests/LocalLrcPlayerTests/` 和 `Sources/LocalLrcPlayerApp/` 是空占位目录,未使用。
 
-测试聚焦在最容易坏、又最难肉眼发现的 SQLite 仓储逻辑:跨库的内容哈希去重、
-总播放列表的累积/排序、播放状态的持久化与删库时清空、设置项/迁移的默认值。
+测试覆盖三块:最容易坏、又最难肉眼发现的 SQLite 仓储逻辑(跨库的内容哈希去重、
+总播放列表的累积/排序、播放状态的持久化与删库时清空、设置项/迁移的默认值);`LrcParser` 的
+时间戳/分组/高亮规则;以及离屏布局回归(`UILayoutTests` 在进程内起 `NSApplication`,用离屏窗口
+对菜单栏卡片、歌词区、曲目列表行断言关键 frame,不需要真机)。改这三块界面的布局时同步更新断言。
 
 ## 架构
 
@@ -69,6 +72,10 @@ Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Ke
 菜单栏歌词。 `MenuBarLyricsController` 在窗口关闭后仍持续显示当前行;
 `MenuBarLyricsStatusImage` 渲染滚动位图;`MenuBarStatusItemVisibility` /
 `MenuBarVisibilityGuide` 处理 macOS 26 的菜单栏可见性权限。`MenuBarLyricsView` 是遗留代码。
+
+日志与诊断。 `AppLog` 是唯一的 `os.Logger` 入口(subsystem 为 bundle id,按模块分 category);
+失败分支旁落日志、不改行为,Cookie 值永不进日志;关键事件用 notice 持久化,高频事件用 info。
+`DiagnosticsReport` 生成「帮助 → 导出诊断信息」的纯文本,用 `OSLogStore` 读本进程日志。
 
 音乐库访问。 `LibraryFolderWatcher` 用 DispatchSource 盯每个音乐文件夹的目录项变化,
 `PlayerWindowController_LibraryWatch` 在 2s 静默后于后台队列做增量 sync 并刷新列表。

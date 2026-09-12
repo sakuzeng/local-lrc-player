@@ -81,6 +81,7 @@ final class LyricSearchService {
         let hasQQMusic = hasCookie(provider: .qqMusic)
 
         guard hasNetEase || hasQQMusic else {
+            AppLog.network.notice("未配置任何歌词源 Cookie，无法搜索歌词")
             completion(.failure(LyricDownloadError.noCookiesConfigured))
             return
         }
@@ -100,6 +101,7 @@ final class LyricSearchService {
                 case .success(let candidates):
                     netEaseCandidates = candidates
                 case .failure(let error):
+                    AppLog.network.error("网易云搜索失败 \(track.displayName, privacy: .public)：\(error.localizedDescription, privacy: .public)")
                     errors.append(error)
                 }
                 group.leave()
@@ -115,6 +117,7 @@ final class LyricSearchService {
                 case .success(let candidates):
                     qqMusicCandidates = candidates
                 case .failure(let error):
+                    AppLog.network.error("QQ 音乐搜索失败 \(track.displayName, privacy: .public)：\(error.localizedDescription, privacy: .public)")
                     errors.append(error)
                 }
                 group.leave()
@@ -249,6 +252,7 @@ final class LyricSearchService {
     ) {
         let attemptLimit = min(candidates.count, maxAutoDownloadAttempts)
         guard index < attemptLimit else {
+            AppLog.lyrics.notice("自动补全放弃 \(track.displayName, privacy: .public)：试过 \(attemptLimit, privacy: .public) 个候选都不可用")
             completion(.failure(LyricDownloadError.noUsableLyric))
             return
         }
@@ -261,6 +265,7 @@ final class LyricSearchService {
 
             switch lyricResult {
             case .failure(let error):
+                AppLog.lyrics.notice("候选歌词获取失败 \(track.displayName, privacy: .public) ← \(match.candidate.name, privacy: .public)[\(match.candidate.provider.rawValue, privacy: .public)]：\(error.localizedDescription, privacy: .public)")
                 self.logAttempt(
                     track: track,
                     candidate: match.candidate,
