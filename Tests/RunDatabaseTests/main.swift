@@ -610,6 +610,8 @@ do {
     try PlayHistoryRepositoryTests().runAll()
     try PlayerStateRepositoryTests().runAll()
     try MenuBarLyricsMaxWidthTests().runAll()
+    try LrcParserTests().runAll()
+    try UILayoutTests().runAll()
     print("All tests passed.")
 } catch {
     fputs("TEST FAILED: \(error)\n", stderr)
