@@ -12,8 +12,7 @@
 ## 下一批（2026-09-12 排定）
 
 - ~~媒体键与系统「正在播放」集成~~（2026-09-12 完成：`NowPlayingCenter`，控制中心 / F7-F9 / AirPods）。
-- 音乐库自动感知变化：用 FSEvents 或 DispatchSource 监听已授权的文件夹，后台增量扫描，
-  新增文件不必 ⌘R。已有内容哈希去重和增量 sync，主要是接线；注意 Security-Scoped Bookmark 下的监听路径。
+- ~~音乐库自动感知变化~~（2026-09-12 完成：`LibraryFolderWatcher` 目录级 DispatchSource + 后台增量 sync）。
 - UI 回归测试：把修卡片居中时用的离屏渲染 harness 收进 `Tests/`，对菜单栏卡片、歌词区、列表行
   断言关键 frame，挡住「切换状态后布局跑偏」这类肉眼难发现的问题；同时补 `LrcParser` 单测。
 - 日志：引入 `os.Logger`，播放失败、歌词匹配失败、Cookie 失效落结构化日志，

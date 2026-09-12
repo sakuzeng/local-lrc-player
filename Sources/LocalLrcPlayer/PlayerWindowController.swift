@@ -5,6 +5,9 @@ final class PlayerWindowController: NSWindowController {
     let trackListDataSource = TrackListDataSource()
     let playbackController = PlaybackController()
     let nowPlayingCenter = NowPlayingCenter()
+    let libraryWatcher = LibraryFolderWatcher()
+    var isAutoSyncInProgress = false
+    var autoSyncRequestedWhileRunning = false
     let lyricSearchService = LyricSearchService()
     let libraryRepository = LibraryRepository()
     let trackRepository = TrackRepository()
@@ -77,6 +80,7 @@ final class PlayerWindowController: NSWindowController {
 
     deinit {
         nowPlayingCenter.detach()
+        libraryWatcher.stopAll()
         progressTimer?.invalidate()
         windowFrameSaveTimer?.invalidate()
         volumeSaveTimer?.invalidate()
@@ -103,6 +107,7 @@ final class PlayerWindowController: NSWindowController {
         }
         bindActions()
         bindNowPlayingCenter()
+        bindLibraryWatcher()
         restorePlaybackMode()
         layout.lyricsView.showPlaceholder("请选择歌曲")
         updateControlState()

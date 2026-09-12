@@ -278,12 +278,15 @@ TrackRepository.sync(libraryId, folderURL)
 reloadMasterPlaylist()
 ```
 
-### 3. 刷新（⌘R）
+### 3. 刷新（⌘R 或文件夹变化自动触发）
 
 ```text
 TrackRepository.syncAll(all libraries)
 reloadMasterPlaylist()
 ```
+
+自动触发时 `syncAll` 在后台队列执行；`AppDatabase` 所有访问都经同一条串行队列，主线程期间的读写会排队等待，
+增量 sync（mtime/size 未变即跳过哈希）通常只有几十毫秒。文件夹不存在时 `sync` 直接抛错、不动数据库。
 
 ### 4. 删除行为
 

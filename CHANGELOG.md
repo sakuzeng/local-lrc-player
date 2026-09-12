@@ -6,6 +6,13 @@
 
 ### Added
 
+- 音乐库自动感知变化:每个已授权的音乐文件夹用一个 `DispatchSource` 盯目录项的增删/改名/替换
+  (`LibraryFolderWatcher`),事件合并 2s 静默后触发一次增量 sync,sync 跑在后台队列不卡 UI,
+  完成后回主线程刷新列表(`PlayerWindowController_LibraryWatch`)。同步进行中再来事件就排队再跑一轮;
+  正在播放的文件被删则停止播放并清掉,与设置里移除文件夹一致。启动、添加/移除文件夹和每轮同步后
+  都重新对齐监听集合,被拔掉又插回的卷会重新盯上。提示走 `showTransientStatus`,几秒后回填原状态。
+  扫描只看顶层目录,所以目录级监听够用;文件内容原地改写不触发目录事件,但临时文件 + rename 的常见写法会。
+
 - 系统「正在播放」集成:键盘媒体键(F7/F8/F9)、AirPods 捏合、控制中心与菜单栏的正在播放卡片
   都能控制本 App(播放/暂停、上一首/下一首、拖进度),卡片显示歌名/歌手/封面/进度。
   新增 `NowPlayingCenter` 封装 `MPNowPlayingInfoCenter` + `MPRemoteCommandCenter`,

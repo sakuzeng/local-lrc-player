@@ -70,7 +70,9 @@ Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Ke
 `MenuBarLyricsStatusImage` 渲染滚动位图;`MenuBarStatusItemVisibility` /
 `MenuBarVisibilityGuide` 处理 macOS 26 的菜单栏可见性权限。`MenuBarLyricsView` 是遗留代码。
 
-音乐库访问。 音乐文件夹可能位于 macOS 受保护目录(如「下载」);
+音乐库访问。 `LibraryFolderWatcher` 用 DispatchSource 盯每个音乐文件夹的目录项变化,
+`PlayerWindowController_LibraryWatch` 在 2s 静默后于后台队列做增量 sync 并刷新列表。
+音乐文件夹可能位于 macOS 受保护目录(如「下载」);
 `LibraryBookmarkStore` 持久化 Security-Scoped Bookmark,使授权在重启后仍有效。
 
 ## 需要同步维护的文档

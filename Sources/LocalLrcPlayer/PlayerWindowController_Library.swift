@@ -26,6 +26,7 @@ extension PlayerWindowController {
                 deduplicated: summary.deduplicated
             )
             updateControlState()
+            updateLibraryWatchers()
 
             // 音乐库同步完才有 tracks 可 JOIN；延一帧避开启动时的窗口恢复动画。
             DispatchQueue.main.async { [weak self] in
@@ -51,6 +52,7 @@ extension PlayerWindowController {
             LibraryBookmarkStore.persistBookmarkIfNeeded(for: library.url)
 
             reloadMasterPlaylist(restoreLastSession: restoreLastSession, preserveTrackURL: preserveTrackURL)
+            updateLibraryWatchers()
 
             if tracks.isEmpty {
                 layout.statusLabel.stringValue = "总播放列表为空（所选目录没有支持的音乐文件）"
@@ -194,6 +196,7 @@ extension PlayerWindowController {
         do {
             let libraries = try libraryRepository.allLibraries()
             activeLibrary = try libraryRepository.activeLibrary()
+            updateLibraryWatchers()
 
             if libraries.isEmpty {
                 tracks = []
@@ -228,7 +231,7 @@ extension PlayerWindowController {
         }
     }
 
-    private func statusSummary(
+    func statusSummary(
         total: Int,
         missingLyrics: Int,
         inserted: Int,
