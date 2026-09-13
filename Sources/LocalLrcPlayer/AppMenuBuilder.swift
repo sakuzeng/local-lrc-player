@@ -69,6 +69,25 @@ enum AppMenuBuilder {
         ))
         fileMenu.addItem(.separator())
         fileMenu.addItem(menuItem(
+            title: "为当前列表写入元数据…",
+            action: #selector(PlayerWindowController.writeMetadataForCurrentPlaylist),
+            keyEquivalent: "",
+            target: playerWindowController
+        ))
+        fileMenu.addItem(menuItem(
+            title: "停止写入元数据",
+            action: #selector(PlayerWindowController.stopMetadataWriting),
+            keyEquivalent: "",
+            target: playerWindowController
+        ))
+        fileMenu.addItem(menuItem(
+            title: "元数据备份…",
+            action: #selector(PlayerWindowController.manageMetadataBackups),
+            keyEquivalent: "",
+            target: playerWindowController
+        ))
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(menuItem(
             title: "新建播放列表…",
             action: #selector(PlayerWindowController.createPlaylistFromMenu),
             keyEquivalent: "n",

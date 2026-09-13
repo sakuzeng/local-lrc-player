@@ -213,6 +213,54 @@ final class TrackRepository {
         }
     }
 
+    /// 写完标签后同步索引：文件内容变了，content_hash 与 mtime/size 都得跟着走，
+    /// 否则下次扫描会把它当成一首新歌（旧哈希查不到），播放状态与列表位置都会漂。
+    /// library_tracks 也缓存了 mtime/size，sync 靠它跳过未变文件，一并更新。
+    func refreshAfterMetadataWrite(trackId: Int64, fileURL: URL) throws {
+        let contentHash = try TrackContentHasher.hash(fileURL: fileURL)
+        let metadata = TrackMetadataReader.read(from: fileURL)
+        let values = try fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let mtime = values.contentModificationDate?.timeIntervalSince1970 ?? Date().timeIntervalSince1970
+        let size = Int64(values.fileSize ?? 0)
+        let now = Date().timeIntervalSince1970
+
+        try database.write { db in
+            let trackSQL = """
+            UPDATE tracks SET
+                file_mtime = ?, file_size = ?, title = ?, artist = ?, album = ?,
+                content_hash = ?, updated_at = ?
+            WHERE id = ?;
+            """
+            let statement = try database.prepare(db, sql: trackSQL)
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_double(statement, 1, mtime)
+            sqlite3_bind_int64(statement, 2, size)
+            bindOptionalText(statement, index: 3, value: metadata.title)
+            bindOptionalText(statement, index: 4, value: metadata.artist)
+            bindOptionalText(statement, index: 5, value: metadata.album)
+            sqlite3_bind_text(statement, 6, contentHash, -1, Self.sqliteTransient)
+            sqlite3_bind_double(statement, 7, now)
+            sqlite3_bind_int64(statement, 8, trackId)
+            guard sqlite3_step(statement) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+
+            let linkSQL = """
+            UPDATE library_tracks SET file_mtime = ?, file_size = ?
+            WHERE track_id = ? AND file_path = ?;
+            """
+            let link = try database.prepare(db, sql: linkSQL)
+            defer { sqlite3_finalize(link) }
+            sqlite3_bind_double(link, 1, mtime)
+            sqlite3_bind_int64(link, 2, size)
+            sqlite3_bind_int64(link, 3, trackId)
+            sqlite3_bind_text(link, 4, fileURL.path, -1, Self.sqliteTransient)
+            guard sqlite3_step(link) == SQLITE_DONE else {
+                throw AppDatabaseError.stepFailed(database.errorMessage(db))
+            }
+        }
+    }
+
     func updateHasLyric(db: OpaquePointer, trackId: Int64, hasLyric: Bool) throws {
         let sql = "UPDATE tracks SET has_lyric = ?, updated_at = ? WHERE id = ?;"
         let statement = try database.prepare(db, sql: sql)
@@ -322,7 +370,8 @@ final class TrackRepository {
         }
     }
 
-    private func bindOptionalText(_ statement: OpaquePointer, index: Int32, value: String?) {
+    /// 共享：sync 引擎在另一个文件里，Swift 的 private 是文件级作用域，不能设 private。
+    func bindOptionalText(_ statement: OpaquePointer, index: Int32, value: String?) {
         if let value {
             sqlite3_bind_text(statement, index, value, -1, Self.sqliteTransient)
         } else {

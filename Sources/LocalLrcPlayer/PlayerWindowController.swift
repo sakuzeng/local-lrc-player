@@ -16,6 +16,10 @@ final class PlayerWindowController: NSWindowController {
     let appSettingsRepository = AppSettingsRepository()
     let playerStateRepository = PlayerStateRepository()
     lazy var artworkDownloadService = ArtworkDownloadService(lyricSearchService: lyricSearchService)
+    lazy var metadataWriteService = MetadataWriteService(
+        lyricSearchService: lyricSearchService,
+        trackRepository: trackRepository
+    )
     var menuBarLyricsController: MenuBarLyricsController?
     weak var settingsWindowController: SettingsWindowController?
     var celebrationPanelController: CelebrationPanelController?
@@ -267,6 +271,7 @@ final class PlayerWindowController: NSWindowController {
         }
         trackListDataSource.onContextMenuNeeded = { [weak self] menu, row in
             self?.appendPlaylistItems(to: menu, forRow: row)
+            self?.appendMetadataItems(to: menu, forRow: row)
         }
 
         layout.lyricsView.onMouseDown = { [weak self] in

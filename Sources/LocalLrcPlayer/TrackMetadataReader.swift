@@ -29,10 +29,28 @@ enum TrackMetadataReader {
         let durationSeconds = asset.duration.seconds
         let duration = durationSeconds.isFinite && durationSeconds > 0 ? durationSeconds : nil
 
+        let commonTitle = cleaned(title)
+        let commonArtist = cleaned(artist)
+        let commonAlbum = cleaned(album)
+
+        // AVFoundation 读不出 FLAC 的 vorbis comment(时长能读,标签全是 nil),
+        // 这类文件只好退回 ffprobe 再读一次,否则列表、菜单栏、系统「正在播放」都只能显示文件名。
+        // 只在三项全空时才走这条路:ffprobe 是外部进程,不该每首歌都开一次。
+        if commonTitle == nil, commonArtist == nil, commonAlbum == nil,
+           let probed = try? MetadataWriter.readExisting(from: url),
+           probed.title != nil || probed.artist != nil || probed.album != nil {
+            return Metadata(
+                title: probed.title,
+                artist: probed.artist,
+                album: probed.album,
+                duration: duration
+            )
+        }
+
         return Metadata(
-            title: cleaned(title),
-            artist: cleaned(artist),
-            album: cleaned(album),
+            title: commonTitle,
+            artist: commonArtist,
+            album: commonAlbum,
             duration: duration
         )
     }

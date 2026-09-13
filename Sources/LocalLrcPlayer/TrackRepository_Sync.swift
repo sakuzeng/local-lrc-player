@@ -59,6 +59,9 @@ extension TrackRepository {
                         trackId: snapshot.trackId,
                         file: file
                     )
+                    // 标签全空的行补读一次:早期版本读不出 FLAC 的 vorbis comment,
+                    // 这些行的 mtime 没变,不特意补就永远停在空标签上。
+                    try refreshBlankMetadataIfNeeded(db: db, trackId: snapshot.trackId, file: file, updatedAt: now)
                     continue
                 }
 
@@ -158,6 +161,44 @@ extension TrackRepository {
             total: counts.total,
             missingLyrics: counts.missingLyrics
         )
+    }
+
+    /// tracks 里 title/artist/album 全空时重读一次标签。不碰哈希与 mtime —— 文件没变,
+    /// 变的只是我们读标签的本事。读出来还是空就什么都不做,下次照样便宜地跳过。
+    private func refreshBlankMetadataIfNeeded(
+        db: OpaquePointer,
+        trackId: Int64,
+        file: ScannedAudioFile,
+        updatedAt: TimeInterval
+    ) throws {
+        let selectSQL = "SELECT title, artist, album FROM tracks WHERE id = ? LIMIT 1;"
+        let select = try database.prepare(db, sql: selectSQL)
+        defer { sqlite3_finalize(select) }
+        sqlite3_bind_int64(select, 1, trackId)
+        guard sqlite3_step(select) == SQLITE_ROW else {
+            return
+        }
+        let isBlank = (0..<3).allSatisfy { sqlite3_column_type(select, Int32($0)) == SQLITE_NULL }
+        guard isBlank else {
+            return
+        }
+
+        let metadata = TrackMetadataReader.read(from: file.url)
+        guard metadata.title != nil || metadata.artist != nil || metadata.album != nil else {
+            return
+        }
+
+        let updateSQL = "UPDATE tracks SET title = ?, artist = ?, album = ?, updated_at = ? WHERE id = ?;"
+        let update = try database.prepare(db, sql: updateSQL)
+        defer { sqlite3_finalize(update) }
+        bindOptionalText(update, index: 1, value: metadata.title)
+        bindOptionalText(update, index: 2, value: metadata.artist)
+        bindOptionalText(update, index: 3, value: metadata.album)
+        sqlite3_bind_double(update, 4, updatedAt)
+        sqlite3_bind_int64(update, 5, trackId)
+        guard sqlite3_step(update) == SQLITE_DONE else {
+            throw AppDatabaseError.stepFailed(database.errorMessage(db))
+        }
     }
 
     private struct LibraryTrackSnapshot {
