@@ -629,6 +629,7 @@ do {
     try PlayQueueTests().runAll()
     try TrackNavigationTests().runAll()
     try NowPlayingModelTests().runAll()
+    try MetadataWriterTests().runAll()
     try UILayoutTests().runAll()
     print("All tests passed.")
 } catch {

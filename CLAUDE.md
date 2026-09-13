@@ -75,6 +75,11 @@ Web API(各需自己的 Cookie,由 `CookieStore` 以明文文件保存,不是 Ke
 `MenuBarLyricsStatusImage` 渲染滚动位图;`MenuBarStatusItemVisibility` /
 `MenuBarVisibilityGuide` 处理 macOS 26 的菜单栏可见性权限。
 
+元数据写入。 `MetadataWriter` 用 ffmpeg 流拷贝把歌名/歌手/专辑/封面/歌词写进音频文件标签(仅 mp3/flac/m4a),
+`MetadataWriteService` 负责收集素材与批量编排,`PlayerWindowController_Metadata` 是 UI 接线。
+三条红线:只补空字段、写前完整备份到 Application Support 再原子替换、写完必须调
+`TrackRepository.refreshAfterMetadataWrite` 同步 `content_hash` 与 mtime/size(否则重扫会多出一首)。
+
 日志与诊断。 `AppLog` 是唯一的 `os.Logger` 入口(subsystem 为 bundle id,按模块分 category);
 失败分支旁落日志、不改行为,Cookie 值永不进日志;关键事件用 notice 持久化,高频事件用 info。
 `DiagnosticsReport` 生成「帮助 → 导出诊断信息」的纯文本,用 `OSLogStore` 读本进程日志。

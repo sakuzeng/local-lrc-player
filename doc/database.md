@@ -18,7 +18,7 @@ Local LRC Player 使用本机 SQLite 作为索引与状态层，不替代磁盘�
 2. Cookie 不进库：网易云 / QQ 音乐 Cookie 仍在 `netease-cookie.txt`、`qqmusic-cookie.txt`。
 3. 总播放列表：UI 列表读系统内置 `playlists.id = 1`（「全部」），多次选文件夹累积曲目。
 4. 内容去重：`tracks.content_hash`（SHA256）为业务唯一键；同内容不同路径只一条 `tracks` 行。
-5. 增量 sync：`library_tracks` 以 `mtime/size` 判断是否需要重算 hash / 读 ID3。
+5. 增量 sync：`library_tracks` 以 `mtime/size` 判断是否需要重算 hash / 读 ID3；跳过的行里若 `title/artist/album` 全空会补读一次标签（早期版本读不出 FLAC 的 vorbis comment，这些行 mtime 没变不会自动更新）。
 6. 级联删除：删除 `tracks` 时 CASCADE 清理 history / log / playlist_tracks。
 
 ---
@@ -249,7 +249,7 @@ AppDatabase.swift           打开 DB、schema v1 初始化
 TrackContentHasher.swift    SHA256 流式 hash
 DatabaseModels.swift        LibraryRecord / TrackRecord
 LibraryRepository.swift     registerLibrary、allLibraries
-TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks
+TrackRepository.swift       sync（hash 去重）、masterPlaylistTracks、refreshAfterMetadataWrite（写标签后同步哈希与 mtime/size）
 LyricLogRepository.swift    logAttempt（写下载记录）、recentAttempts（诊断导出读最近记录，JOIN tracks 取文件名）
 PlaylistRepository.swift    按列表查曲目（总列表/自建）、ensureInMasterPlaylist、自建列表 CRUD 与成员增删
 PlayerStateRepository.swift player_state 读写（含主窗口 frame）
@@ -293,6 +293,18 @@ reloadMasterPlaylist()
 
 自动触发时 `syncAll` 在后台队列执行；`AppDatabase` 所有访问都经同一条串行队列，主线程期间的读写会排队等待，
 增量 sync（mtime/size 未变即跳过哈希）通常只有几十毫秒。文件夹不存在时 `sync` 直接抛错、不动数据库。
+
+### 3.5 写入元数据后
+
+```text
+MetadataWriter.write（备份 → ffmpeg 流拷贝 → 原子替换）
+TrackRepository.refreshAfterMetadataWrite(trackId, fileURL)
+  → 重算 content_hash，更新 tracks 的 title/artist/album/mtime/size/hash
+  → 同步 library_tracks 的 mtime/size（sync 靠它跳过未变文件）
+```
+
+文件内容变了哈希必随之变；不更新索引的话，下次 sync 会因旧哈希查不到而把同一个文件当成新曲目，
+播放状态与列表位置都会漂。`MetadataWriterTests` 有一条用例专门守这个：写入后重新 sync 仍是同一行同一 id。
 
 ### 4. 删除行为
 

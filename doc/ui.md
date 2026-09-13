@@ -137,7 +137,7 @@
 
 - 当前列表在控制器里（`currentPlaylistId` / `currentPlaylistName`）并持久化到 `player_state.current_playlist_id`；启动时 `restoreCurrentPlaylistSelection` 先站到上次的列表再恢复上次曲目，列表已删则回「全部」。`reloadMasterPlaylist` 按它查，搜索和队列都在当前列表内生效。
 - 顶栏标题菜单：所有列表（当前项打勾）→ 新建播放列表… → 自建列表时再给 重命名 / 删除。名字用 `NSAlert` 加 `NSTextField` accessory 输入。
-- 曲目行右键在队列项之后由 `onContextMenuNeeded` 交给控制器追加：「加入播放列表 ▸」（每个自建列表一项，按成员关系打勾，点了切换；末尾「新建播放列表并加入…」），自建列表视图下再加「从『X』移除」。
+- 曲目行右键在队列项之后由 `onContextMenuNeeded` 交给控制器追加：先是「加入播放列表 ▸」（每个自建列表一项，按成员关系打勾，点了切换；末尾「新建播放列表并加入…」），自建列表视图下再加「从『X』移除」；最后一段是「写入元数据…」（`PlayerWindowController_Metadata`，会改音频文件，弹确认并先备份）。
 - 切到不含正在播放曲目的列表时 `currentTrackIndex` 清空、播放继续，下一首/自动切歌从新列表算。
 
 ### 曲目行右键菜单与播放队列
@@ -188,6 +188,7 @@
 - 卡片弹出时 App 通常在后台，控件必须 `acceptsFirstMouse`，否则第一次点击只会激活 App 并被吞掉（`CardButton` / `CardSeekSlider`）。
 - 数据走 `NowPlayingModel`：卡片只读 `snapshot`、订阅变化，按钮/滑杆回调调 `model.commands`，不拿窗口控制器；控制器在切歌、播放/暂停、seek 完成和 0.2s tick 时发布快照。封面在控制器侧另存一份，因为 layout 只把它放进私有 `NSImageView`。
 - 刷新靠订阅 model（控制器 0.2s tick 发布一次），卡片没弹出时直接返回，不新开 timer。
+- 出现/收起是自绘动画：从右上角按 0.6 倍展开 + 淡入（0.28s，曲线与歌词滚动同一条带过冲），收起整块缩到 0.96 并淡出（0.15s）。`animationBehavior = .none` 避免与系统动画叠加。缩放走图层变换（挂在毛玻璃外面一层普通视图 `animationHost` 上，锚点仍是中心、靠平移把不动点移到右上角），不动窗口尺寸——改尺寸会触发内容重排而发抖。出现动画不 hold 终值、结束自然归位；收起 hold 住终值直到窗口隐藏，隐藏时清掉动画。动画可打断：收起途中再悬停会顶掉收起动画原地接回来，所以「显示中」判定（`isShown`）排除正在收起的那一段，状态机一律用它而不是 `panel.isVisible`。
 - 拖动进度/音量期间不回写滑杆值（`SeekSlider.isTrackingMouse`），否则会被 0.2s 刷新拽回播放头。
 - status button 不设 `toolTip`：系统气泡会叠在卡片上方重复同一句歌词，改由卡片第三行显示完整当前行。
 - tracking area 挂在 `statusItem.button` 上（owner 回调，不加 subview —— `enable()` 有「button 有子视图就重建」的判断）；`item.length` 随歌词滚动频繁变化，用 `.inVisibleRect` 让区域自己跟着 bounds 走；statusItem 重建时按 button 身份幂等重挂。
