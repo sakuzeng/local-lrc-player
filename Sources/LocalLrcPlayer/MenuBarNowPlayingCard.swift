@@ -425,6 +425,13 @@ final class MenuBarNowPlayingCardController: NSResponder {
     private static let closeGrace: TimeInterval = 0.25
     /// 面板顶边与菜单栏底边的留白。
     private static let menuBarGap: CGFloat = 6
+    /// 出现时从这个比例放大到原尺寸，收起反向。缩放做在图层变换上而不是窗口尺寸上：
+    /// 面板内容是固定宽度，改窗口尺寸会触发 Auto Layout 重排，动画里会抖。
+    /// 面板底的展开幅度。0.6 是「从菜单栏那个角落长出来」的观感，过冲曲线让它落位时轻轻回弹。
+    private static let appearScale: CGFloat = 0.6
+    private static let appearDuration: TimeInterval = 0.28
+    private static let dismissDuration: TimeInterval = 0.15
+    private static let dismissScale: CGFloat = 0.96
     private static let screenMargin: CGFloat = 8
     private static let cornerRadius: CGFloat = 14
 
@@ -438,6 +445,8 @@ final class MenuBarNowPlayingCardController: NSResponder {
         defer: false
     )
     private let cardView = MenuBarNowPlayingCardView()
+    /// 缩放动画的宿主：毛玻璃那层由 AppKit 管着，变换挂在外面这层普通视图上更稳。
+    private let animationHost = NSView()
 
     private weak var attachedButton: NSStatusBarButton?
     private var trackingArea: NSTrackingArea?
@@ -447,9 +456,12 @@ final class MenuBarNowPlayingCardController: NSResponder {
     private var insideCard = false
     private var offscreenTicks = 0
     private var isMenuOpen = false
+    /// 收起动画进行中：面板还可见但已经在告别，此时再悬停要能原地接回来。
+    private var isClosing = false
 
+    /// 对外与状态机的「显示中」都不含正在收起的那一段，否则收起途中悬停会被判成已显示、弹不回来。
     var isShown: Bool {
-        panel.isVisible
+        panel.isVisible && !isClosing
     }
 
     init(model: NowPlayingModel) {
@@ -509,7 +521,8 @@ final class MenuBarNowPlayingCardController: NSResponder {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.becomesKeyOnlyIfNeeded = true
-        panel.animationBehavior = .utilityWindow
+        // 自己做出现/收起动画，关掉系统那套免得两层淡入叠在一起。
+        panel.animationBehavior = .none
 
         // 毛玻璃底 + 圆角遮罩；窗口透明，阴影跟着圆角走。
         let root = NSVisualEffectView()
@@ -520,14 +533,24 @@ final class MenuBarNowPlayingCardController: NSResponder {
         root.layer?.cornerRadius = Self.cornerRadius
         root.layer?.cornerCurve = .continuous
         root.layer?.masksToBounds = true
+        root.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(cardView)
+
+        animationHost.wantsLayer = true
+        animationHost.layer?.masksToBounds = false
+        animationHost.addSubview(root)
+
         NSLayoutConstraint.activate([
             cardView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             cardView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             cardView.topAnchor.constraint(equalTo: root.topAnchor),
-            cardView.bottomAnchor.constraint(equalTo: root.bottomAnchor)
+            cardView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            root.leadingAnchor.constraint(equalTo: animationHost.leadingAnchor),
+            root.trailingAnchor.constraint(equalTo: animationHost.trailingAnchor),
+            root.topAnchor.constraint(equalTo: animationHost.topAnchor),
+            root.bottomAnchor.constraint(equalTo: animationHost.bottomAnchor)
         ])
-        panel.contentView = root
+        panel.contentView = animationHost
     }
 
     /// statusItem 会被反复销毁重建，所以每次配置成功都要调；按 button 身份幂等。
@@ -549,7 +572,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     func detach() {
-        closeImmediately()
+        closeImmediately(animated: false)
         if let trackingArea, let attachedButton, attachedButton.trackingAreas.contains(trackingArea) {
             attachedButton.removeTrackingArea(trackingArea)
         }
@@ -563,12 +586,13 @@ final class MenuBarNowPlayingCardController: NSResponder {
     func setMenuOpen(_ open: Bool) {
         isMenuOpen = open
         if open {
-            closeImmediately()
+            // 原生菜单要立刻占位，这里不做告别动画。
+            closeImmediately(animated: false)
         }
     }
 
     func refreshIfVisible() {
-        guard panel.isVisible else {
+        guard isShown else {
             return
         }
         cardView.apply(model.snapshot)
@@ -580,13 +604,52 @@ final class MenuBarNowPlayingCardController: NSResponder {
         verifyPointerStillInside()
     }
 
-    func closeImmediately() {
+    /// animated: false 用于 statusItem 重建、原生菜单弹出这类必须立刻让位的场合。
+    func closeImmediately(animated: Bool = true) {
         cancelOpenTimer()
         cancelCloseTimer()
-        if panel.isVisible {
-            panel.orderOut(nil)
+        guard panel.isVisible else {
+            return
+        }
+        guard animated else {
+            hidePanel()
+            return
+        }
+        guard !isClosing else {
+            return
+        }
+
+        isClosing = true
+        animateTransform(
+            from: 1,
+            to: Self.dismissScale,
+            duration: Self.dismissDuration,
+            timingFunction: CAMediaTimingFunction(name: .easeIn),
+            holdsFinalValue: true
+        )
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.dismissDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            guard let self, self.isClosing else {
+                // 动画途中又弹回来了，别把刚显示的面板收掉。
+                return
+            }
+            self.hidePanel()
         }
     }
+
+    private func hidePanel() {
+        isClosing = false
+        // 收起动画 hold 着缩小后的终值，不清掉的话下次弹出会从一张缩小的图开始。
+        animationHost.layer?.removeAnimation(forKey: Self.transformAnimationKey)
+        panel.orderOut(nil)
+        // alpha 必须复位，否则下次 orderFront 出来的是一张透明面板。
+        panel.alphaValue = 1
+    }
+
+    private static let transformAnimationKey = "cardTransform"
 
     override func mouseEntered(with event: NSEvent) {
         insideButton = true
@@ -601,7 +664,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func scheduleOpen() {
-        guard !isMenuOpen, !panel.isVisible, openTimer == nil else {
+        guard !isMenuOpen, !isShown, openTimer == nil else {
             return
         }
         openTimer = Timer.scheduledTimer(withTimeInterval: Self.openDelay, repeats: false) { [weak self] _ in
@@ -614,7 +677,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func scheduleClose() {
-        guard panel.isVisible, closeTimer == nil else {
+        guard isShown, closeTimer == nil else {
             return
         }
         closeTimer = Timer.scheduledTimer(withTimeInterval: Self.closeGrace, repeats: false) { [weak self] _ in
@@ -643,7 +706,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
     }
 
     private func showCard() {
-        guard !isMenuOpen, insideButton, !panel.isVisible else {
+        guard !isMenuOpen, insideButton, !isShown else {
             return
         }
         guard let button = attachedButton, button.window != nil else {
@@ -653,8 +716,66 @@ final class MenuBarNowPlayingCardController: NSResponder {
         cardView.apply(model.snapshot)
         offscreenTicks = 0
         layoutPanel(under: button)
+        presentPanel()
+    }
+
+    /// 从右上角由小到大展开 + 淡入。收起途中再悬停会直接接回来（present 会顶掉收起动画），
+    /// 来回扫过菜单栏也不会一跳一跳。
+    private func presentPanel() {
+        if !panel.isVisible {
+            panel.alphaValue = 0
+        }
+        isClosing = false
+        animationHost.layer?.removeAnimation(forKey: Self.transformAnimationKey)
         // App 多半在后台，普通 orderFront 可能不生效。
         panel.orderFrontRegardless()
+        animateTransform(
+            from: Self.appearScale,
+            to: 1,
+            duration: Self.appearDuration,
+            timingFunction: CAMediaTimingFunction(controlPoints: 0.2, 1.12, 0.35, 1.0),
+            holdsFinalValue: false
+        )
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.appearDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    /// 缩放走显式动画，图层的 model 值始终留在原尺寸：出现动画结束后自然归位，
+    /// 不用手动复位，也不会和 Auto Layout 打架。收起时要 hold 住终值直到窗口真的隐藏。
+    private func animateTransform(
+        from: CGFloat,
+        to: CGFloat,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction,
+        holdsFinalValue: Bool
+    ) {
+        guard let layer = animationHost.layer else {
+            return
+        }
+        let animation = CABasicAnimation(keyPath: "transform")
+        animation.fromValue = NSValue(caTransform3D: Self.transform(scale: from, in: layer.bounds))
+        animation.toValue = NSValue(caTransform3D: Self.transform(scale: to, in: layer.bounds))
+        animation.duration = duration
+        animation.timingFunction = timingFunction
+        if holdsFinalValue {
+            animation.fillMode = .forwards
+            animation.isRemovedOnCompletion = false
+        }
+        layer.add(animation, forKey: Self.transformAnimationKey)
+    }
+
+    /// 以右上角为不动点缩放：面板挂在菜单栏歌词正下方、右缘与它对齐，
+    /// 从那个角落长出来最像「从歌词里弹出来的」。锚点仍是图层中心，靠平移补偿。
+    private static func transform(scale: CGFloat, in bounds: CGRect) -> CATransform3D {
+        guard scale != 1 else {
+            return CATransform3DIdentity
+        }
+        let dx = bounds.width / 2 * (1 - scale)
+        let dy = bounds.height / 2 * (1 - scale)
+        return CATransform3DScale(CATransform3DMakeTranslation(dx, dy, 0), scale, scale, 1)
     }
 
     /// 面板右缘对齐状态项右缘、顶边贴菜单栏下方。菜单栏状态项从右往左排，
@@ -662,6 +783,10 @@ final class MenuBarNowPlayingCardController: NSResponder {
     /// 右侧超出屏幕时整体左移。
     private func layoutPanel(under button: NSStatusBarButton) {
         guard let buttonWindow = button.window, let content = panel.contentView else {
+            return
+        }
+        // 收起动画正在移动 frame，这时候校正位置会和动画打架。
+        guard !isClosing else {
             return
         }
         let buttonRect = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil))
@@ -692,7 +817,7 @@ final class MenuBarNowPlayingCardController: NSResponder {
         if let frame = attachedButton?.window?.frame, frame.insetBy(dx: -4, dy: -4).contains(pointer) {
             inside = true
         }
-        if panel.isVisible, panel.frame.insetBy(dx: -4, dy: -4).contains(pointer) {
+        if isShown, panel.frame.insetBy(dx: -4, dy: -4).contains(pointer) {
             inside = true
         }
 
